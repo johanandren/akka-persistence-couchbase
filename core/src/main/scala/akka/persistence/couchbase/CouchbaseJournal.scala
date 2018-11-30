@@ -10,6 +10,7 @@ import akka.NotUsed
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
 import akka.event.Logging
+import akka.persistence.couchbase.internal.CouchbaseSchema.Queries
 import akka.persistence.couchbase.internal._
 import akka.persistence.journal.{AsyncWriteJournal, Tagged}
 import akka.persistence.{AtomicWrite, PersistentRepr}
@@ -45,7 +46,10 @@ private[akka] object CouchbaseJournal {
  * INTERNAL API
  */
 @InternalApi
-class CouchbaseJournal(config: Config, configPath: String) extends AsyncWriteJournal with AsyncCouchbaseSession {
+class CouchbaseJournal(config: Config, configPath: String)
+    extends AsyncWriteJournal
+    with AsyncCouchbaseSession
+    with Queries {
 
   import CouchbaseJournal._
   import akka.persistence.couchbase.internal.CouchbaseSchema.Fields
@@ -69,32 +73,13 @@ class CouchbaseJournal(config: Config, configPath: String) extends AsyncWriteJou
 
     CouchbaseJournalSettings(sharedConfig)
   }
+  def bucketName: String = settings.bucket
 
   protected val asyncSession: Future[CouchbaseSession] = CouchbaseSession(settings.sessionSettings, settings.bucket)
   asyncSession.failed.foreach { ex =>
     log.error(ex, "Failed to connect to couchbase")
     context.stop(self)
   }
-
-  // TODO how horrific is this query, it does hit the index but it still needs to look at all results?
-  // seems to be at worst as fast as the previous ORDER BY + LIMIT 1 query at least
-  private val highestSequenceNrStatement =
-    s"""
-      |SELECT MAX(m.sequence_nr) AS max FROM ${settings.bucket} a UNNEST messages AS m
-      |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
-      |AND a.persistence_id = $$pid
-      |AND m.sequence_nr >= $$from
-    """.stripMargin
-
-  private val replayStatement =
-    s"""
-      |SELECT a.persistence_id, a.writer_uuid, m.* FROM ${settings.bucket} a UNNEST messages AS m
-      |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
-      |AND a.persistence_id = $$pid
-      |AND m.sequence_nr >= $$from
-      |AND m.sequence_nr <= $$to
-      |ORDER BY m.sequence_nr
-    """.stripMargin
 
   override def postStop(): Unit = {
     closeCouchbaseSession()
@@ -125,6 +110,7 @@ class CouchbaseJournal(config: Config, configPath: String) extends AsyncWriteJou
     }
 
   private def atomicWriteToJsonDoc(write: AtomicWrite): Future[JsonDocument] = {
+    // FIXME move document layout/serialization to CouchbaseSchema if possible
     val serializedMessages: Future[Seq[JsonObject]] = Future.sequence(write.payload.map {
       persistentRepr =>
         val (event, tags) = persistentRepr.payload match {
@@ -197,12 +183,7 @@ class CouchbaseJournal(config: Config, configPath: String) extends AsyncWriteJou
       }
 
     val replayFinished: Future[Unit] = deletedTo.flatMap { firstNonDeletedSeqNr =>
-      val params = JsonObject
-        .create()
-        .put("pid", persistenceId)
-        .put("from", firstNonDeletedSeqNr)
-        .put("to", toSequenceNr)
-      val query = N1qlQuery.parameterized(replayStatement, params, replayConsistency)
+      val query = replayQuery(persistenceId, firstNonDeletedSeqNr, toSequenceNr, replayConsistency)
 
       log.debug("Starting at sequence_nr {}, query: {}", firstNonDeletedSeqNr, query)
       val source: Source[JsonObject, NotUsed] = session.streamedQuery(query)
@@ -231,19 +212,11 @@ class CouchbaseJournal(config: Config, configPath: String) extends AsyncWriteJou
     withCouchbaseSession { session =>
       log.debug("asyncReadHighestSequenceNr {} {}", persistenceId, fromSequenceNr)
 
-      val highestSequenceNrQuery = N1qlQuery.parameterized(
-        highestSequenceNrStatement,
-        JsonObject
-          .create()
-          .put("pid", persistenceId)
-          .put("from", fromSequenceNr: java.lang.Long),
-        replayConsistency
-      )
-
-      log.debug("Executing: {}", highestSequenceNrQuery)
+      val query = highestSequenceNrQuery(persistenceId, fromSequenceNr, replayConsistency)
+      log.debug("Executing: {}", query)
 
       session
-        .singleResponseQuery(highestSequenceNrQuery)
+        .singleResponseQuery(query)
         .map {
           case Some(jsonObj) =>
             log.debug("sequence nr: {}", jsonObj)

@@ -5,6 +5,7 @@
 package akka.persistence.couchbase.internal
 
 import akka.annotation.InternalApi
+import akka.persistence.couchbase.CouchbaseReadJournalSettings
 import akka.stream.stage._
 import akka.stream.{Attributes, Outlet, SourceShape}
 import com.couchbase.client.java.AsyncBucket
@@ -39,7 +40,7 @@ private[akka] object N1qlQueryStage {
  */
 @InternalApi
 private[akka] final class N1qlQueryStage[S](live: Boolean,
-                                            pageSize: Int,
+                                            settings: CouchbaseReadJournalSettings,
                                             initialQuery: N1qlQuery,
                                             bucket: AsyncBucket,
                                             initialState: S,
@@ -70,7 +71,7 @@ private[akka] final class N1qlQueryStage[S](live: Boolean,
 
     private val completeCb = getAsyncCallback[Unit] { _ =>
       log.debug("Query complete. Remaining buffer: {}", buffer)
-      if (rowsInCurrentQuery == pageSize)
+      if (rowsInCurrentQuery == settings.pageSize)
         state = IdleAfterFullPage
       else
         state = Idle
@@ -78,14 +79,14 @@ private[akka] final class N1qlQueryStage[S](live: Boolean,
         if (live) {
           // continue until we don't get a full page
           // TODO alternative would be to more aggressively query next until we get empty result
-          if (rowsInCurrentQuery == pageSize)
+          if (rowsInCurrentQuery == settings.pageSize)
             doNextQuery()
           else {
             // wait for timer
           }
         } else {
           // non-live, continue until we don't get a full page
-          if (rowsInCurrentQuery == pageSize)
+          if (rowsInCurrentQuery == settings.pageSize)
             doNextQuery()
           else
             completeStage()
@@ -102,9 +103,8 @@ private[akka] final class N1qlQueryStage[S](live: Boolean,
     }
 
     override def preStart(): Unit = {
-      // TODO make configurable
       if (live)
-        schedulePeriodicallyWithInitialDelay(Poll, 1.second, 1.second)
+        schedulePeriodicallyWithInitialDelay(Poll, settings.liveQueryInterval, settings.liveQueryInterval)
       executeQuery(initialQuery)
     }
 

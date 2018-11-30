@@ -15,10 +15,10 @@ import akka.persistence.couchbase._
 import akka.serialization.{AsyncSerializer, Serialization, Serializers}
 import akka.util.OptionVal
 import com.couchbase.client.java.document.JsonDocument
-import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
+import com.couchbase.client.java.document.json.JsonObject
+import com.couchbase.client.java.query.{N1qlParams, N1qlQuery, ParameterizedN1qlQuery, SimpleN1qlQuery}
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
@@ -112,6 +112,111 @@ private[akka] final object CouchbaseSchema {
   val MetadataEntryType = "journal_metadata"
   val JournalEntryType = "journal_message"
   val SnapshotEntryType = "snapshot"
+
+  trait Queries {
+    def bucketName: String
+
+    // TODO how horrific is this query, it does hit the index but it still needs to look at all results?
+    // seems to be at worst as fast as the previous ORDER BY + LIMIT 1 query at least
+    private lazy val highestSequenceNrStatement =
+      s"""
+         |SELECT MAX(m.sequence_nr) AS max FROM ${bucketName} a UNNEST messages AS m
+         |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
+         |AND a.persistence_id = $$pid
+         |AND m.sequence_nr >= $$from
+      """.stripMargin
+
+    protected def highestSequenceNrQuery(persistenceId: String, fromSequenceNr: Long, params: N1qlParams): N1qlQuery =
+      N1qlQuery.parameterized(
+        highestSequenceNrStatement,
+        JsonObject
+          .create()
+          .put("pid", persistenceId)
+          .put("from", fromSequenceNr: java.lang.Long),
+        params
+      )
+
+    private lazy val replayStatement =
+      s"""
+         |SELECT a.persistence_id, a.writer_uuid, m.* FROM ${bucketName} a UNNEST messages AS m
+         |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
+         |AND a.persistence_id = $$pid
+         |AND m.sequence_nr >= $$from
+         |AND m.sequence_nr <= $$to
+         |ORDER BY m.sequence_nr
+    """.stripMargin
+
+    protected def replayQuery(persistenceId: String, from: Long, to: Long, params: N1qlParams): N1qlQuery =
+      N1qlQuery.parameterized(replayStatement,
+                              JsonObject
+                                .create()
+                                .put("pid", persistenceId)
+                                .put("from", from)
+                                .put("to", to),
+                              params)
+
+    /* Both these queries flattens the doc.messages (which can contain batched writes)
+     * into elements in the result and adds a field for the persistence id from
+     * the surrounding document. Note that the UNNEST name (m) must match the name used
+     * for the array value in the index or the index will not be used for these
+     */
+    private lazy val eventsByTagQuery =
+      s"""
+         |SELECT a.persistence_id, m.* FROM ${bucketName} a UNNEST messages AS m
+         |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
+         |AND ARRAY_CONTAINS(m.tags, $$tag) = true
+         |AND m.ordering > $$fromOffset AND m.ordering <= $$toOffset
+         |ORDER BY m.ordering
+         |limit $$limit
+    """.stripMargin
+
+    protected def eventsByTagQuery(tag: String, fromOffset: String, toOffset: String, pageSize: Int): N1qlQuery =
+      N1qlQuery.parameterized(
+        eventsByTagQuery,
+        JsonObject
+          .create()
+          .put("tag", tag)
+          .put("ordering", fromOffset)
+          .put("limit", pageSize)
+          .put("fromOffset", fromOffset)
+          .put("toOffset", toOffset)
+      )
+
+    private lazy val eventsByPersistenceId =
+      s"""
+         |SELECT a.persistence_id, m.* from ${bucketName} a UNNEST messages AS m
+         |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
+         |AND a.persistence_id = $$pid
+         |AND m.sequence_nr  >= $$from
+         |AND m.sequence_nr <= $$to
+         |ORDER by m.sequence_nr
+         |LIMIT $$limit
+    """.stripMargin
+
+    protected def eventsByPersistenceIdQuery(persistenceId: String,
+                                             fromSequenceNr: Long,
+                                             toSequenceNr: Long,
+                                             pageSize: Int): N1qlQuery =
+      N1qlQuery.parameterized(eventsByPersistenceId,
+                              JsonObject
+                                .create()
+                                .put("pid", persistenceId)
+                                .put("from", fromSequenceNr)
+                                .put("to", toSequenceNr)
+                                .put("limit", pageSize))
+
+    // IS NOT NULL is needed to hit the index
+    private lazy val persistenceIds =
+      s"""
+         |SELECT DISTINCT(persistence_id) FROM ${bucketName}
+         |WHERE type = "${CouchbaseSchema.JournalEntryType}"
+         |AND persistence_id IS NOT NULL
+     """.stripMargin
+
+    protected def persistenceIdsQuery(): N1qlQuery =
+      N1qlQuery.simple(persistenceIds)
+
+  }
 
   def metadataIdFor(persistenceId: String): String = s"$persistenceId-meta"
 

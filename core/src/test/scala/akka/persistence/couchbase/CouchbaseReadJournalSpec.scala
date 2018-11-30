@@ -68,6 +68,34 @@ class CouchbaseReadJournalSpec
     }
   }
 
+  "live persistenceIds" must {
+    "show new persistence ids" in {
+      val senderProbe = TestProbe()
+      implicit val sender = senderProbe.ref
+
+      val queryProbe: TestSubscriber.Probe[String] =
+        queries.persistenceIds().runWith(TestSink.probe)
+
+      queryProbe.request(10)
+
+      val pa3 = system.actorOf(TestActor.props("p3"))
+      pa3 ! "p3-evt-1"
+      senderProbe.expectMsg("p3-evt-1-done")
+
+      awaitAssert({
+        queryProbe.expectNext("p3")
+      }, 5.seconds)
+
+      val pa4 = system.actorOf(TestActor.props("p4"))
+      pa4 ! "p4-evt-1"
+      senderProbe.expectMsg("p4-evt-1-done")
+
+      // we shouldn't see p3 again
+      queryProbe.expectNext("p4")
+
+    }
+  }
+
   // FIXME make these test independent i.e. don't rely on writes of previous test
   "liveEventsByTag" must {
 

@@ -64,6 +64,7 @@ object CouchbaseJournalSettings {
 private[couchbase] final case class CouchbaseReadJournalSettings(sessionSettings: CouchbaseSessionSettings,
                                                                  bucket: String,
                                                                  pageSize: Int,
+                                                                 liveQueryInterval: FiniteDuration,
                                                                  eventByTagSettings: EventByTagSettings)
 final case class EventByTagSettings(eventualConsistencyDelay: FiniteDuration)
 
@@ -78,14 +79,15 @@ private[couchbase] object CouchbaseReadJournalSettings {
     val bucket = config.getString("write.bucket")
     val sessionSettings = CouchbaseSessionSettings(clientConfig)
 
-    val pagesize = config.getInt("read.page-size")
+    val pageSize = config.getInt("read.page-size")
 
     val eventByTagConfig = config.getConfig("read.events-by-tag")
     val eventByTagSettings = EventByTagSettings(
       eventByTagConfig.getDuration("eventual-consistency-delay").toMillis.millis
     )
+    val liveQueryInterval = config.getDuration("read.live-query-interval").toMillis.millis
 
-    CouchbaseReadJournalSettings(sessionSettings, bucket, pagesize, eventByTagSettings)
+    CouchbaseReadJournalSettings(sessionSettings, bucket, pageSize, liveQueryInterval, eventByTagSettings)
   }
 }
 

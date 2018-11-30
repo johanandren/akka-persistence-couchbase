@@ -10,7 +10,7 @@ import akka.NotUsed
 import akka.actor.ExtendedActorSystem
 import akka.annotation.InternalApi
 import akka.event.Logging
-import akka.persistence.couchbase.internal.CouchbaseSchema.Fields
+import akka.persistence.couchbase.internal.CouchbaseSchema.{Fields, Queries}
 import akka.persistence.couchbase.internal._
 import akka.persistence.query._
 import akka.persistence.query.scaladsl._
@@ -43,8 +43,8 @@ object CouchbaseReadJournal {
     with EventsByTagQuery
     with CurrentEventsByTagQuery
     with CurrentPersistenceIdsQuery
-    // TODO actually implement:    with PersistenceIdsQuery
-    {
+    with PersistenceIdsQuery
+    with CouchbaseSchema.Queries {
 
   private implicit val system = eas
   private val log = Logging(system, configPath)
@@ -60,6 +60,7 @@ object CouchbaseReadJournal {
 
     CouchbaseReadJournalSettings(sharedConfig)
   }
+  def bucketName: String = settings.bucket
 
   protected val asyncSession: Future[CouchbaseSession] = CouchbaseSession(settings.sessionSettings, settings.bucket)
   asyncSession.failed.foreach { ex =>
@@ -69,40 +70,6 @@ object CouchbaseReadJournal {
   system.registerOnTermination {
     closeCouchbaseSession()
   }
-
-  /* Both these queries flattens the doc.messages (which can contain batched writes)
-   * into elements in the result and adds a field for the persistence id from
-   * the surrounding document. Note that the UNNEST name (m) must match the name used
-   * for the array value in the index or the index will not be used for these
-   */
-  private val eventsByTagQuery =
-    s"""
-      |SELECT a.persistence_id, m.* FROM ${settings.bucket} a UNNEST messages AS m
-      |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
-      |AND ARRAY_CONTAINS(m.tags, $$tag) = true
-      |AND m.ordering > $$fromOffset AND m.ordering <= $$toOffset
-      |ORDER BY m.ordering
-      |limit $$limit
-    """.stripMargin
-
-  private val eventsByPersistenceId =
-    s"""
-      |SELECT a.persistence_id, m.* from ${settings.bucket} a UNNEST messages AS m
-      |WHERE a.type = "${CouchbaseSchema.JournalEntryType}"
-      |AND a.persistence_id = $$pid
-      |AND m.sequence_nr  >= $$from
-      |AND m.sequence_nr <= $$to
-      |ORDER by m.sequence_nr
-      |LIMIT $$limit
-    """.stripMargin
-
-  // IS NOT NULL is needed to hit the index
-  private val pidsQuery =
-    s"""
-       |SELECT DISTINCT(persistence_id) FROM ${settings.bucket}
-       |WHERE type = "${CouchbaseSchema.JournalEntryType}"
-       |AND persistence_id IS NOT NULL
-     """.stripMargin
 
   override def eventsByPersistenceId(persistenceId: String,
                                      fromSequenceNr: Long,
@@ -119,25 +86,18 @@ object CouchbaseReadJournal {
                                             fromSequenceNr: Long,
                                             toSequenceNr: Long): Source[EventEnvelope, NotUsed] =
     sourceWithCouchbaseSession { session =>
-      def params(from: Long) =
-        JsonObject
-          .create()
-          .put("pid", persistenceId)
-          .put("from", from)
-          .put("to", toSequenceNr)
-          .put("limit", settings.pageSize)
-
       // TODO do the deleted to query first and start from higher of that and fromSequenceNr
       val source =
         Source
           .fromGraph(
             new N1qlQueryStage[Long](
               live,
-              settings.pageSize,
-              N1qlQuery.parameterized(eventsByPersistenceId, params(fromSequenceNr)),
+              settings,
+              eventsByPersistenceIdQuery(persistenceId, fromSequenceNr, toSequenceNr, settings.pageSize),
               session.underlying,
               fromSequenceNr, { from =>
-                if (from <= toSequenceNr) Some(N1qlQuery.parameterized(eventsByPersistenceId, params(from)))
+                if (from <= toSequenceNr)
+                  Some(eventsByPersistenceIdQuery(persistenceId, from, toSequenceNr, settings.pageSize))
                 else None
               },
               (_, row) => row.value().getLong(Fields.SequenceNr) + 1
@@ -189,15 +149,6 @@ object CouchbaseReadJournal {
         TimeBasedUUIDSerialization.toSortableString(uuid)
       }
 
-      def params(fromOffset: String, toOffset: String): JsonObject =
-        JsonObject
-          .create()
-          .put("tag", tag)
-          .put("ordering", fromOffset)
-          .put("limit", settings.pageSize)
-          .put("fromOffset", fromOffset)
-          .put("toOffset", toOffset)
-
       // note that the result is "unnested" into the message objects + the persistence id, so the normal
       // document structure does not apply here
       val taggedRows: Source[AsyncN1qlQueryRow, NotUsed] =
@@ -205,11 +156,12 @@ object CouchbaseReadJournal {
           .fromGraph(
             new N1qlQueryStage[String](
               live,
-              settings.pageSize,
-              N1qlQuery.parameterized(eventsByTagQuery, params(initialOrderingString, endOffset)),
+              settings,
+              eventsByTagQuery(tag, initialOrderingString, endOffset, settings.pageSize),
               session.underlying,
-              initialOrderingString,
-              ordering => Some(N1qlQuery.parameterized(eventsByTagQuery, params(ordering, endOffset))), { (_, row) =>
+              initialOrderingString, { ordering =>
+                Some(eventsByTagQuery(tag, ordering, endOffset, settings.pageSize))
+              }, { (_, row) =>
                 row.value().getString(Fields.Ordering)
               }
             )
@@ -236,12 +188,38 @@ object CouchbaseReadJournal {
    * select  distinct persistenceId from akka where persistenceId is not null
    */
   override def currentPersistenceIds(): Source[String, NotUsed] = sourceWithCouchbaseSession { session =>
-    // this type works on the current queries we'd need to create a stage
-    // to do the live queries
-    // this can fail as it relies on async updates to the index.
-    val queryParams = N1qlParams.build().consistency(ScanConsistency.REQUEST_PLUS) // FIXME drop this consistency
+    log.debug("currentPersistenceIds query")
     // FIXME respect page size for this query as well?
-    session.streamedQuery(N1qlQuery.simple(pidsQuery, queryParams)).map(_.getString(Fields.PersistenceId))
+    session.streamedQuery(persistenceIdsQuery()).map(_.getString(Fields.PersistenceId))
   }
 
+  override def persistenceIds(): Source[String, NotUsed] = sourceWithCouchbaseSession { session =>
+    log.debug("persistenceIds query")
+    Source
+      .fromGraph(
+        new N1qlQueryStage[NotUsed](
+          live = true,
+          settings,
+          persistenceIdsQuery(),
+          session.underlying,
+          NotUsed,
+          nextQuery = _ => Some(persistenceIdsQuery()),
+          (_, _) => NotUsed
+        )
+      )
+      .mapMaterializedValue(_ => NotUsed)
+      .statefulMapConcat[String] { () =>
+        var seenIds = Set.empty[String]
+
+        { (row) =>
+          val id = row.value().getString(Fields.PersistenceId)
+          if (seenIds.contains(id)) Nil
+          else {
+            seenIds += id
+            id :: Nil
+          }
+        }
+      }
+
+  }
 }
