@@ -92,6 +92,8 @@ class CouchbaseReadJournalSpec
 
       // we shouldn't see p3 again
       queryProbe.expectNext("p4")
+      // also not after p4 (it could come out of order)
+      queryProbe.expectNoMessage(waitTime)
 
     }
   }
