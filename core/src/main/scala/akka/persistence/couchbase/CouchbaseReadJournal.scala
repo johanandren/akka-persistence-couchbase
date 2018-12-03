@@ -189,7 +189,7 @@ object CouchbaseReadJournal {
    */
   override def currentPersistenceIds(): Source[String, NotUsed] = sourceWithCouchbaseSession { session =>
     log.debug("currentPersistenceIds query")
-    // FIXME respect page size for this query as well?
+    // FIXME paging & respect page size for this query as well? #108
     session.streamedQuery(persistenceIdsQuery()).map(_.getString(Fields.PersistenceId))
   }
 
