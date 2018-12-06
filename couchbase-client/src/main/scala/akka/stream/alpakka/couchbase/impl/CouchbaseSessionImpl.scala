@@ -8,20 +8,21 @@ import java.util.concurrent.TimeUnit
 
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
-import akka.stream.alpakka.couchbase.CouchbaseWriteSettings
-import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.stream.alpakka.couchbase.internal.CouchbaseSessionJavaAdapter
-import akka.stream.alpakka.couchbase.javadsl
+import akka.stream.alpakka.couchbase.{javadsl, CouchbaseWriteSettings}
+import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.stream.scaladsl.Source
-import akka.util.ByteString
 import akka.{Done, NotUsed}
 import com.couchbase.client.java.bucket.AsyncBucketManager
-import com.couchbase.client.java.document.{ByteArrayDocument, Document, JsonDocument}
 import com.couchbase.client.java.document.json.JsonObject
+import com.couchbase.client.java.document.{Document, JsonDocument}
+import com.couchbase.client.java.query.util.IndexInfo
 import com.couchbase.client.java.query.{N1qlQuery, Statement}
 import com.couchbase.client.java.{AsyncBucket, AsyncCluster}
 import rx.RxReactiveStreams
 
+import scala.collection.immutable
+import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
@@ -98,8 +99,6 @@ final private[couchbase] class CouchbaseSessionImpl(asyncBucket: AsyncBucket, cl
       .map(_ => Done)(ExecutionContexts.sameThreadExecutionContext)
 
   def streamedQuery(query: N1qlQuery): Source[JsonObject, NotUsed] =
-    // FIXME change this so that it does paging if possible
-    // FIXME verify back pressure works
     // FIXME verify cancellation works
     Source.fromPublisher(RxReactiveStreams.toPublisher(asyncBucket.query(query).flatMap(RxUtilities.unfoldJsonObjects)))
 
@@ -153,6 +152,17 @@ final private[couchbase] class CouchbaseSessionImpl(asyncBucket: AsyncBucket, cl
           )
         ),
       s"Create index: $indexName"
+    )
+
+  override def listIndexes(): Source[IndexInfo, NotUsed] =
+    Source.fromPublisher(
+      RxReactiveStreams.toPublisher(
+        asyncBucket
+          .bucketManager()
+          .flatMap(
+            func1Observable((abm: AsyncBucketManager) => abm.listN1qlIndexes())
+          )
+      )
     )
 
 }

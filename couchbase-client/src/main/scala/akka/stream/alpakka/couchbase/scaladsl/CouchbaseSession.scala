@@ -15,6 +15,7 @@ import com.couchbase.client.java._
 import com.couchbase.client.java.document.json.JsonObject
 import com.couchbase.client.java.document.{Document, JsonDocument}
 import com.couchbase.client.java.query._
+import com.couchbase.client.java.query.util.IndexInfo
 
 import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
@@ -211,4 +212,9 @@ trait CouchbaseSession {
    *      and ready to be used.
    */
   def createIndex(indexName: String, ignoreIfExist: Boolean, fields: AnyRef*): Future[Boolean]
+
+  /**
+   * List the existing secondary indexes for the bucket
+   */
+  def listIndexes(): Source[IndexInfo, NotUsed]
 }

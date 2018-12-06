@@ -17,6 +17,7 @@ import akka.stream.javadsl.Source
 import akka.{Done, NotUsed}
 import com.couchbase.client.java.document.json.JsonObject
 import com.couchbase.client.java.document.{Document, JsonDocument}
+import com.couchbase.client.java.query.util.IndexInfo
 import com.couchbase.client.java.query.{N1qlQuery, Statement}
 import com.couchbase.client.java.{AsyncBucket, Bucket}
 
@@ -200,4 +201,9 @@ abstract class CouchbaseSession {
    *      is online and ready to be used.
    */
   def createIndex(indexName: String, ignoreIfExist: Boolean, fields: AnyRef*): CompletionStage[Boolean]
+
+  /**
+   * List the existing secondary indexes for the bucket
+   */
+  def listIndexes(): Source[IndexInfo, NotUsed]
 }

@@ -24,9 +24,10 @@ import akka.persistence.couchbase.CouchbaseReadJournalSettings
 import akka.persistence.query._
 import akka.persistence.query.scaladsl._
 import akka.serialization.{Serialization, SerializationExtension}
+import akka.stream.ActorMaterializer
 import akka.stream.alpakka.couchbase.CouchbaseSessionRegistry
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Sink, Source}
 import com.couchbase.client.java.query._
 import com.typesafe.config.Config
 
@@ -100,6 +101,24 @@ class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, configPath:
 
   asyncSession.failed.foreach { ex =>
     log.error(ex, "Failed to connect to couchbase")
+  }
+  if (settings.warnAboutMissingIndexes) {
+    implicit val materializer = ActorMaterializer()
+    for {
+      session <- asyncSession
+      indexes <- session.listIndexes().runWith(Sink.seq)
+    } {
+      materializer.shutdown() // not needed after used
+      val indexNames = indexes.map(_.name()).toSet
+      Set("tags", "tags-ordering").foreach(
+        requiredIndex =>
+          if (!indexNames(requiredIndex))
+            log.warning(
+              "Missing the [{}] index, the events by tag query will not work without it, se plugin documentation for details",
+              requiredIndex
+          )
+      )
+    }
   }
 
   /**

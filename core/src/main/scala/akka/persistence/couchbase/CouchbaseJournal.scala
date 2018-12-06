@@ -18,7 +18,7 @@ import akka.serialization.{Serialization, SerializationExtension}
 import akka.stream.ActorMaterializer
 import akka.stream.alpakka.couchbase.CouchbaseSessionRegistry
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{Sink, Source}
 import com.couchbase.client.java.document.JsonDocument
 import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
 import com.couchbase.client.java.query._
@@ -86,6 +86,23 @@ class CouchbaseJournal(config: Config, configPath: String)
   asyncSession.failed.foreach { ex =>
     log.error(ex, "Failed to connect to couchbase")
     context.stop(self)
+  }
+
+  if (settings.warnAboutMissingIndexes) {
+    for {
+      session <- asyncSession
+      indexes <- session.listIndexes().runWith(Sink.seq)
+    } {
+      val indexNames = indexes.map(_.name()).toSet
+      Set("persistence-ids", "sequence-nrs").foreach { requiredIndex =>
+        println(requiredIndex + " " + indexNames(requiredIndex))
+        if (!indexNames(requiredIndex))
+          log.error(
+            "Missing the [{}] index, the journal will not work without it, se plugin documentation for details",
+            requiredIndex
+          )
+      }
+    }
   }
 
   override def asyncWriteMessages(messages: im.Seq[AtomicWrite]): Future[im.Seq[Try[Unit]]] = {

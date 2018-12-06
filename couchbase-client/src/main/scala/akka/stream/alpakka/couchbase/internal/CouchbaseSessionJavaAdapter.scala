@@ -8,7 +8,7 @@ import java.time.Duration
 import java.util.Optional
 import java.util.concurrent.CompletionStage
 
-import akka.Done
+import akka.{Done, NotUsed}
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
 import akka.stream.alpakka.couchbase.CouchbaseWriteSettings
@@ -18,6 +18,7 @@ import akka.stream.javadsl.Source
 import com.couchbase.client.java.AsyncBucket
 import com.couchbase.client.java.document.{ByteArrayDocument, Document, JsonDocument}
 import com.couchbase.client.java.document.json.JsonObject
+import com.couchbase.client.java.query.util.IndexInfo
 import com.couchbase.client.java.query.{N1qlQuery, Statement}
 
 import scala.compat.java8.FutureConverters._
@@ -106,4 +107,6 @@ private[couchbase] final class CouchbaseSessionJavaAdapter(delegate: ScalaCouchb
   private def futureOptToJava[T](future: Future[Option[T]]): CompletionStage[Optional[T]] =
     future.map(_.asJava)(ExecutionContexts.sameThreadExecutionContext).toJava
 
+  def listIndexes(): Source[IndexInfo, NotUsed] =
+    delegate.listIndexes().asJava
 }

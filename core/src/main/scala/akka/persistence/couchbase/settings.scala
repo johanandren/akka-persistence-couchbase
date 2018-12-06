@@ -15,7 +15,8 @@ final case class CouchbaseJournalSettings private (sessionSettings: CouchbaseSes
                                                    bucket: String,
                                                    writeSettings: CouchbaseWriteSettings,
                                                    replayPageSize: Int,
-                                                   readTimeout: FiniteDuration)
+                                                   readTimeout: FiniteDuration,
+                                                   warnAboutMissingIndexes: Boolean)
 
 /**
  * INTERNAL API
@@ -35,8 +36,14 @@ object CouchbaseJournalSettings {
     )
     val readTimeout = config.getDuration("write.read-timeout").toMillis.millis
     val replayPageSize = config.getInt("write.replay-page-size")
+    val warnAboutMissingIndexes = config.getBoolean("write.warn-about-missing-indexes")
 
-    CouchbaseJournalSettings(sessionSettings, bucket, writeSettings, replayPageSize, readTimeout)
+    CouchbaseJournalSettings(sessionSettings,
+                             bucket,
+                             writeSettings,
+                             replayPageSize,
+                             readTimeout,
+                             warnAboutMissingIndexes)
   }
 
   private def parseReplicateTo(value: String): ReplicateTo = value match {
@@ -67,7 +74,8 @@ private[couchbase] final case class CouchbaseReadJournalSettings(sessionSettings
                                                                  pageSize: Int,
                                                                  liveQueryInterval: FiniteDuration,
                                                                  eventByTagSettings: EventByTagSettings,
-                                                                 dispatcher: String)
+                                                                 dispatcher: String,
+                                                                 warnAboutMissingIndexes: Boolean)
 final case class EventByTagSettings(eventualConsistencyDelay: FiniteDuration)
 
 /**
@@ -91,7 +99,15 @@ private[couchbase] object CouchbaseReadJournalSettings {
 
     val dispatcher = config.getString("read.plugin-dispatcher")
 
-    CouchbaseReadJournalSettings(sessionSettings, bucket, pageSize, liveQueryInterval, eventByTagSettings, dispatcher)
+    val warnAboutMissingIndexes = config.getBoolean("write.warn-about-missing-indexes")
+
+    CouchbaseReadJournalSettings(sessionSettings,
+                                 bucket,
+                                 pageSize,
+                                 liveQueryInterval,
+                                 eventByTagSettings,
+                                 dispatcher,
+                                 warnAboutMissingIndexes)
   }
 }
 
