@@ -24,6 +24,16 @@ class UUIDSpec extends WordSpec with Matchers with ScalaFutures {
       val result = UUIDTimestamp.fromUnixTimestamp(unixTimestamp).toUnixTimestamp
       result should ===(unixTimestamp)
     }
+    "roundtrip a max unix timestamp back into itself" in {
+      val unixTimestamp = UUIDTimestamp.MaxVal.toUnixTimestamp
+      val result = UUIDTimestamp.fromUnixTimestamp(unixTimestamp).toUnixTimestamp
+      result should ===(unixTimestamp)
+    }
+    "roundtrip a min unix timestamp back into itself" in {
+      val unixTimestamp = UUIDTimestamp.MinVal.toUnixTimestamp
+      val result = UUIDTimestamp.fromUnixTimestamp(unixTimestamp).toUnixTimestamp
+      result should ===(unixTimestamp)
+    }
 
     "get a mac that isn't broadcast" in {
       val mac = UUIDGenerator.extractMac()
