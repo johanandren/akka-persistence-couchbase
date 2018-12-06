@@ -27,17 +27,20 @@ object CouchbaseJournalSettings {
     val clientConfig = config.getConfig("connection")
     val bucket = config.getString("write.bucket")
     val sessionSettings = CouchbaseSessionSettings(clientConfig)
-    val writeSettings = CouchbaseWriteSettings(
-      parallelism = config.getInt("write.parallelism"),
-      replicateTo = parseReplicateTo(config.getString("write.replicate-to")),
-      persistTo = parsePersistTo(config.getString("write.persist-to")),
-      timeout = config.getDuration("write.write-timeout").toMillis.millis
-    )
+    val writeSettings = parseWriteSettings(config)
     val readTimeout = config.getDuration("write.read-timeout").toMillis.millis
     val replayPageSize = config.getInt("write.replay-page-size")
 
     CouchbaseJournalSettings(sessionSettings, bucket, writeSettings, replayPageSize, readTimeout)
   }
+
+  def parseWriteSettings(config: Config): CouchbaseWriteSettings =
+    CouchbaseWriteSettings(
+      parallelism = config.getInt("write.parallelism"),
+      replicateTo = parseReplicateTo(config.getString("write.replicate-to")),
+      persistTo = parsePersistTo(config.getString("write.persist-to")),
+      timeout = config.getDuration("write.write-timeout").toMillis.millis
+    )
 
   private def parseReplicateTo(value: String): ReplicateTo = value match {
     case "none" => ReplicateTo.NONE
@@ -99,7 +102,9 @@ private[couchbase] object CouchbaseReadJournalSettings {
  * INTERNAL API
  */
 @InternalApi
-private[couchbase] final case class CouchbaseSnapshotSettings(sessionSettings: CouchbaseSessionSettings, bucket: String)
+private[couchbase] final case class CouchbaseSnapshotSettings(sessionSettings: CouchbaseSessionSettings,
+                                                              bucket: String,
+                                                              writeSettings: CouchbaseWriteSettings)
 
 /**
  * INTERNAL API
@@ -112,6 +117,10 @@ private[couchbase] object CouchbaseSnapshotSettings {
     val bucket = config.getString("snapshot.bucket")
     val sessionSettings = CouchbaseSessionSettings(clientConfig)
 
-    CouchbaseSnapshotSettings(sessionSettings, bucket)
+    // pick these up from the write journal config - it doesn't make sense to allow different
+    // settings for events and snapshots
+    val writeSettings = CouchbaseJournalSettings.parseWriteSettings(config)
+
+    CouchbaseSnapshotSettings(sessionSettings, bucket, writeSettings)
   }
 }

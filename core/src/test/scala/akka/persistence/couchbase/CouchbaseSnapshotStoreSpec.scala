@@ -5,6 +5,7 @@
 package akka.persistence.couchbase
 
 import akka.persistence.snapshot.SnapshotStoreSpec
+import akka.testkit.WithLogCapturing
 import com.typesafe.config.ConfigFactory
 
 class CouchbaseSnapshotStoreSpec
@@ -13,8 +14,10 @@ class CouchbaseSnapshotStoreSpec
         .parseString(
           """
             |akka.persistence.snapshot-store.plugin = "couchbase-journal.snapshot"
+            |akka.loggers = ["akka.testkit.SilenceAllTestEventListener"]
           """.stripMargin
         )
         .withFallback(ConfigFactory.load())
     )
-    with CouchbaseBucketSetup {}
+    with CouchbaseBucketSetup
+    with WithLogCapturing

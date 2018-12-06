@@ -27,15 +27,12 @@ import com.typesafe.config.Config
 
 import scala.concurrent.{ExecutionContext, Future}
 
-// FIXME, share a Couchbase cluster between read/journal and snapshot
-// Make it an extension to look them up?
-class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotStore with AsyncCouchbaseSession {
+final class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotStore with AsyncCouchbaseSession {
 
   private val settings: CouchbaseSnapshotSettings = {
     // shared config is one level above the journal specific
     val commonPath = configPath.replaceAll("""\.snapshot""", "")
     val sharedConfig = context.system.settings.config.getConfig(commonPath)
-
     CouchbaseSnapshotSettings(sharedConfig)
   }
   private implicit val system: ActorSystem = context.system
@@ -49,32 +46,31 @@ class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotSt
     context.stop(self)
   }
 
-  /**
-   * select * from akka where type = "snapshot"
-   * and persistence_id = "p-1"
-   * and sequence_nr <= 100
-   * and sequence_nr >= 0
-   * and timestamp <= 1635974897888
-   * order by sequence_nr desc
-   * limit 1
-   *
-   */
+  private val queryParams = N1qlParams.build().consistency(ScanConsistency.STATEMENT_PLUS)
+
   def loadAsync(persistenceId: String, criteria: SnapshotSelectionCriteria): Future[Option[SelectedSnapshot]] =
     withCouchbaseSession { session =>
       log.debug("loadAsync: {}, criteria: {}", persistenceId, criteria)
-      val filter = snapshotFilter(criteria)
 
+      /* Something like:
+       * select * from akka where type = "snapshot"
+       * and persistence_id = "p-1"
+       * and sequence_nr <= 100
+       * and sequence_nr >= 0
+       * and timestamp <= 1635974897888
+       * order by sequence_nr desc
+       * limit 1
+       * the filter parts are added as needed and not always present
+       */
+      val filter = snapshotFilter(criteria)
       val query = select("*")
         .from(settings.bucket)
         .where(filter)
         .orderBy(desc(Fields.SequenceNr))
         .limit(1)
 
-      // FIXME, deal with errors
       val result: Future[Option[JsonObject]] = session.singleResponseQuery(
-        N1qlQuery.parameterized(query,
-                                JsonArray.from("snapshot", persistenceId),
-                                N1qlParams.build().consistency(ScanConsistency.STATEMENT_PLUS))
+        N1qlQuery.parameterized(query, JsonArray.from("snapshot", persistenceId), queryParams)
       )
 
       result.flatMap {
@@ -96,7 +92,7 @@ class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotSt
     val ser: Future[SerializedMessage] = SerializedMessage.serialize(serialization, snapshot.asInstanceOf[AnyRef])
 
     ser.map { serializedMessage =>
-      val toStore: JsonObject =
+      val json: JsonObject =
         CouchbaseSchema
           .serializedMessageToObject(serializedMessage)
           .put(Fields.Type, CouchbaseSchema.SnapshotEntryType)
@@ -105,32 +101,31 @@ class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotSt
           .put(Fields.PersistenceId, metadata.persistenceId)
 
       session
-        .upsert(JsonDocument.create(snapshotKey(metadata), toStore))
+        .upsert(JsonDocument.create(CouchbaseSchema.snapshotIdFor(metadata), json), settings.writeSettings)
         .map(_ => ())(ExecutionContexts.sameThreadExecutionContext)
     }
   }
 
   def deleteAsync(metadata: SnapshotMetadata): Future[Unit] = withCouchbaseSession { session =>
-    val key = snapshotKey(metadata)
+    val key = CouchbaseSchema.snapshotIdFor(metadata)
     session
-      .remove(key)
+      .remove(key, settings.writeSettings)
       .recover {
         case _: DocumentDoesNotExistException => ()
       }
-      .map(_ => ())
+      .map(_ => ())(ExecutionContexts.sameThreadExecutionContext)
   }
 
   def deleteAsync(persistenceId: String, criteria: SnapshotSelectionCriteria): Future[Unit] = withCouchbaseSession {
     session =>
       val filter = snapshotFilter(criteria)
       val query = N1qlQuery.parameterized(
-        deleteFrom(settings.bucket)
-          .where(filter),
+        deleteFrom(settings.bucket).where(filter),
         JsonArray.from(CouchbaseSchema.SnapshotEntryType, persistenceId),
-        N1qlParams.build().consistency(ScanConsistency.REQUEST_PLUS)
+        queryParams
       )
 
-      session.singleResponseQuery(query).map(_ => ())
+      session.singleResponseQuery(query).map(_ => ())(ExecutionContexts.sameThreadExecutionContext)
   }
 
   private def snapshotFilter(criteria: SnapshotSelectionCriteria): Expression = {
@@ -152,8 +147,5 @@ class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends SnapshotSt
 
     filter
   }
-
-  private def snapshotKey(metadata: SnapshotMetadata): String =
-    s"${metadata.persistenceId}-${metadata.sequenceNr}-snapshot"
 
 }

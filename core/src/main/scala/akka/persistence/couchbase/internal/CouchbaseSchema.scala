@@ -9,7 +9,7 @@ import java.util.Base64
 import akka.actor.{ActorSystem, ExtendedActorSystem}
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
-import akka.persistence.PersistentRepr
+import akka.persistence.{PersistentRepr, SnapshotMetadata}
 import akka.persistence.couchbase.CouchbaseJournal.TaggedPersistentRepr
 import akka.persistence.couchbase._
 import akka.serialization.{AsyncSerializer, Serialization, Serializers}
@@ -236,6 +236,8 @@ private[akka] final object CouchbaseSchema {
         }
 
   }
+
+  def snapshotIdFor(metadata: SnapshotMetadata): String = s"${metadata.persistenceId}-${metadata.sequenceNr}-snapshot"
 
   def metadataIdFor(persistenceId: String): String = s"$persistenceId-meta"
 

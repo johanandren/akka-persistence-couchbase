@@ -6,18 +6,27 @@ package akka.persistence.couchbase
 import akka.actor.{ActorSystem, PoisonPill}
 import akka.persistence.couchbase.TestActor.{GetLastRecoveredEvent, SaveSnapshot}
 import akka.stream.ActorMaterializer
-import akka.testkit.{TestKit, TestProbe}
+import akka.testkit.{TestKit, TestProbe, WithLogCapturing}
+import com.typesafe.config.ConfigFactory
 import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach, Matchers, WordSpecLike}
 
 import scala.concurrent.duration._
 
 class CouchbaseSnapshotSpec
-    extends TestKit(ActorSystem("CouchbaseSnapshotSpec"))
+    extends TestKit(
+      ActorSystem(
+        "CouchbaseSnapshotSpec",
+        ConfigFactory.parseString("""
+            |akka.loggers = ["akka.testkit.SilenceAllTestEventListener"]
+          """.stripMargin).withFallback(ConfigFactory.load())
+      )
+    )
     with WordSpecLike
     with BeforeAndAfterAll
     with Matchers
     with CouchbaseBucketSetup
-    with BeforeAndAfterEach {
+    with BeforeAndAfterEach
+    with WithLogCapturing {
 
   protected override def afterAll(): Unit = {
     super.afterAll()
