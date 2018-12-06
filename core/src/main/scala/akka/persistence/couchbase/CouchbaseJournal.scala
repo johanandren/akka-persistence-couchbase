@@ -95,7 +95,6 @@ class CouchbaseJournal(config: Config, configPath: String)
     } {
       val indexNames = indexes.map(_.name()).toSet
       Set("persistence-ids", "sequence-nrs").foreach { requiredIndex =>
-        println(requiredIndex + " " + indexNames(requiredIndex))
         if (!indexNames(requiredIndex))
           log.error(
             "Missing the [{}] index, the journal will not work without it, se plugin documentation for details",
