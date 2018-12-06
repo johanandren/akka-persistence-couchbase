@@ -7,32 +7,24 @@ package akka.persistence.couchbase
 import java.util.UUID
 
 import akka.persistence.couchbase.internal.{TimeBasedUUIDs, UUIDTimestamp}
-import akka.persistence.couchbase.internal.TimeBasedUUIDs.create
 import akka.persistence.query.{NoOffset, TimeBasedUUID}
-import org.scalatest.{Matchers, WordSpec}
 import org.scalatest.concurrent.ScalaFutures
+import org.scalatest.{Matchers, WordSpec}
 
 class UUIDsSpec extends WordSpec with Matchers with ScalaFutures {
 
   "UUIDs factory" should {
     "return NoOffset for zero timestamp" in {
-      assert(UUIDs.timeBasedUUIDFrom(0) === NoOffset)
+      UUIDs.timeBasedUUIDFrom(0) should ===(NoOffset)
     }
-    "roundtrip current time UUID back into itself" in {
-      val uuidTs = UUIDTimestamp.now()
-      val uuid: UUID = TimeBasedUUIDs.create(uuidTs, TimeBasedUUIDs.MinLSB)
-      val timeBasedUuid: TimeBasedUUID = TimeBasedUUID(uuid)
-      val ts: Long = UUIDs.timestampFrom(timeBasedUuid)
+    "return a TimeBasedUUID for non zero timestamps" in {
+      val now = System.currentTimeMillis()
+      val result = UUIDs.timeBasedUUIDFrom(now)
 
-      assert(UUIDs.timeBasedUUIDFrom(ts).asInstanceOf[TimeBasedUUID] === timeBasedUuid)
-    }
-    "roundtrip max possible UUID back into itself" in {
-      val maxUuid: UUID = create(UUIDTimestamp.MaxVal, TimeBasedUUIDs.MinLSB)
-      val timeBasedUuid: TimeBasedUUID = TimeBasedUUID(maxUuid)
+      result shouldBe a[TimeBasedUUID]
+      val roundTrip = new UUIDTimestamp(result.asInstanceOf[TimeBasedUUID].value.timestamp()).toUnixTimestamp
 
-      val ts: Long = UUIDs.timestampFrom(timeBasedUuid)
-
-      assert(UUIDs.timeBasedUUIDFrom(ts).asInstanceOf[TimeBasedUUID] === timeBasedUuid)
+      roundTrip should ===(now)
     }
   }
 }

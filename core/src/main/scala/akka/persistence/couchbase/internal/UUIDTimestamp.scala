@@ -64,6 +64,11 @@ private[akka] final case class UUIDTimestamp(nanoTimestamp: Long) extends AnyVal
       .atZone(UUIDTimestamp.GMT)
   }
 
+  /**
+   * Note that this conversion is lossy
+   * since the UUID timestamp is in 100s of nanos.
+   *  @return The timestamp as a unix timestamp in milliseconds
+   */
   def toUnixTimestamp: Long =
     (nanoTimestamp / UUIDUnitsPerMs) + StartEpochMillis
 
