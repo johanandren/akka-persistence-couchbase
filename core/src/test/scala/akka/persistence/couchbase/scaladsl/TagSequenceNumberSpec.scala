@@ -6,15 +6,12 @@
  * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
  */
 package akka.persistence.couchbase.scaladsl
-import akka.event.LoggingAdapter
 import akka.persistence.couchbase.TestActor
 import akka.persistence.couchbase.internal.CouchbaseSchema.Queries
 import akka.persistence.couchbase.internal.{AsyncCouchbaseSession, TagSequenceNumbering}
-import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import com.couchbase.client.java.query.N1qlParams
 import com.couchbase.client.java.query.consistency.ScanConsistency
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 class TagSequenceNumberSpec
