@@ -50,16 +50,19 @@ private[akka] final object CouchbaseSchema {
              // either of these two depending on serializer
              "payload_bin": "rO0ABXQACHAyLWV2dC0x",
              "payload": { json- }
-             // these two fielsds are only present if there are any tags
+             // these three fields are only present if there are any tags
              "tags": [ "tag1", "tag2" ]
+             "tag-seq-nrs": {
+               "tag1": 5,
+               "tag2": 1
+             },
              // the format of the data is the time based UUID represented as (time in utc)
              // [YYYY]-[MM]-[DD]T[HH]:[mm]:[ss]:[nanoOfSecond]_[lsb-unsigned-long-as-space-padded-string]
              // see akka.persistence.couchbase.internal.TimeBasedUUIDSerialization
              // which makes it possible to sort as a string field and get the same order as sorting the actual time based UUIDs
              "ordering": "1582-10-16T18:52:02.434002368_ 7093823767347982046",
            }
-         ],
-
+         ]
        }
      */
 
@@ -67,6 +70,10 @@ private[akka] final object CouchbaseSchema {
     val PersistenceId = "persistence_id"
     val WriterUuid = "writer_uuid"
     val Messages = "messages"
+    val TagSeqNrs = "tag_seq_nrs"
+    // per tag
+    val Tag = "tag"
+    val TagSeqNr = "seq_nr"
 
     // === per message/event ===
     val SequenceNr = "sequence_nr"
@@ -83,7 +90,7 @@ private[akka] final object CouchbaseSchema {
        Sample doc structure:
        {
          "type": "journal_metadata",
-         "deleted_to": 123
+         "deleted_to": 123, // if there are deleted events
        }
 
      */
@@ -234,6 +241,24 @@ private[akka] final object CouchbaseSchema {
           case NonFatal(ex) =>
             throw new RuntimeException(s"Failed looking up deleted messages for [$persistenceId]", ex)
         }
+
+    private lazy val highestTagSeqNr =
+      s"""
+        |SELECT t.seq_nr from ${bucketName} a UNNEST messages AS m UNNEST m.tag_seq_nrs AS t
+        |WHERE a.type = "journal_message"
+        |AND a.persistence_id = $$pid
+        |AND t.tag = $$tag
+        |ORDER BY m.sequence_nr DESC
+        |LIMIT 1
+      """.stripMargin
+
+    def highestTagSequenceNumberQuery(persistenceId: String, tag: String, params: N1qlParams): N1qlQuery =
+      N1qlQuery.parameterized(highestTagSeqNr,
+                              JsonObject
+                                .create()
+                                .put("pid", persistenceId)
+                                .put("tag", tag),
+                              params)
 
   }
 

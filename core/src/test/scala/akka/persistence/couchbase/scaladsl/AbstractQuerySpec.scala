@@ -70,7 +70,6 @@ abstract class AbstractQuerySpec(testName: String)
   override implicit val patienceConfig: PatienceConfig = PatienceConfig(readOurOwnWritesTimeout)
   implicit val materializer: Materializer = ActorMaterializer()
 
-
   lazy // #read-journal-access
   val queries: CouchbaseReadJournal =
     PersistenceQuery(system).readJournalFor[CouchbaseReadJournal](CouchbaseReadJournal.Identifier)

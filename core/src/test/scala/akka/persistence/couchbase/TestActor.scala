@@ -22,6 +22,7 @@ object TestActor {
   final case class DeleteTo(seqNr: Long)
   final case object SaveSnapshot
   final case object GetLastRecoveredEvent
+  final case object Stop
 }
 
 class TestActor(override val persistenceId: String, override val journalPluginId: String) extends PersistentActor {
@@ -71,5 +72,9 @@ class TestActor(override val persistenceId: String, override val journalPluginId
 
     case GetLastRecoveredEvent =>
       sender() ! lastRecoveredEvent
+
+    case TestActor.Stop =>
+      context.stop(self)
+      sender() ! "stopping"
   }
 }
