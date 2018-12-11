@@ -4,14 +4,11 @@
 
 package akka.persistence.couchbase
 
-import java.util.UUID
-
 import akka.NotUsed
-import akka.actor.Terminated
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
 import akka.event.Logging
-import akka.persistence.couchbase.internal.CouchbaseSchema.Queries
+import akka.persistence.couchbase.internal.CouchbaseSchema.{MessageForWrite, Queries, TaggedMessageForWrite}
 import akka.persistence.couchbase.internal._
 import akka.persistence.journal.{AsyncWriteJournal, Tagged}
 import akka.persistence.{AtomicWrite, PersistentRepr}
@@ -21,12 +18,10 @@ import akka.stream.alpakka.couchbase.CouchbaseSessionRegistry
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.stream.scaladsl.{Sink, Source}
 import com.couchbase.client.java.document.JsonDocument
-import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
 import com.couchbase.client.java.query._
 import com.couchbase.client.java.query.consistency.ScanConsistency
 import com.typesafe.config.Config
 
-import scala.collection.JavaConverters._
 import scala.collection.{immutable => im}
 import scala.concurrent.duration.Duration
 import scala.concurrent.{ExecutionContext, Future}
@@ -39,7 +34,6 @@ import scala.util.{Failure, Success, Try}
 @InternalApi
 private[akka] object CouchbaseJournal {
 
-  case class TaggedPersistentRepr(pr: PersistentRepr, tags: Set[String], offset: UUID)
   case class PersistentActorTerminated(persistenceId: String)
 
   private val ExtraSuccessFulUnit: Try[Unit] = Success(())
@@ -137,74 +131,35 @@ class CouchbaseJournal(config: Config, configPath: String)
     }
 
   private def atomicWriteToJsonDoc(write: AtomicWrite): Future[JsonDocument] = {
-    // FIXME move document layout/serialization to CouchbaseSchema if possible
+    // Needs to be sequential because of tagged event sequence numbering
+    val messagesForWrite: Future[im.Seq[MessageForWrite]] =
+      FutureUtils.traverseSequential(write.payload) { persistentRepr =>
+        persistentRepr.payload match {
+          case t: Tagged =>
+            val serializedF = SerializedMessage.serialize(serialization, t.payload.asInstanceOf[AnyRef])
+            val tagsAndSeqNrsF = FutureUtils.traverseSequential(t.tags.toList)(
+              tag => nextTagSeqNrFor(persistentRepr.persistenceId, tag).map(n => tag -> n)
+            )
+            for {
+              serialized <- serializedF
+              tagsAndSeqNrs <- tagsAndSeqNrsF
+            } yield
+              new TaggedMessageForWrite(persistentRepr.sequenceNr, serialized, uuidGenerator.nextUuid(), tagsAndSeqNrs)
 
-    // this we can potentially let happen in parallel
-    val serializedWithTags: Future[im.Seq[(PersistentRepr, SerializedMessage, Set[String])]] =
-      Future.sequence(write.payload.map { persistentRepr =>
-        val (event, tags) = persistentRepr.payload match {
-          case t: Tagged => (t.payload.asInstanceOf[AnyRef], t.tags)
-          case other => (other.asInstanceOf[AnyRef], Set.empty[String])
-        }
-        SerializedMessage.serialize(serialization, event).map(event => (persistentRepr, event, tags))
-      })
-
-    // this we cannot because of tagged event sequencing
-    val serializedMessages: Future[Seq[JsonObject]] =
-      serializedWithTags.flatMap { seq =>
-        FutureUtils.traverseSequential(seq) {
-          case (persistentRepr, message, tags) =>
-            // note that JsonObject is mutable so we cannot create it upfront and
-            // touch it from a future
-            def messageAsJson(): JsonObject =
-              CouchbaseSchema
-                .serializedMessageToObject(message)
-                .put(Fields.SequenceNr, persistentRepr.sequenceNr)
-
-            if (tags.nonEmpty) {
-              // Event UUID is stored in string field that sorts the same as the in-JVM uuid comparator
-              // allowing us to query and sort tagged events server side
-              val tagSeqNrsF =
-                FutureUtils.traverseSequential(tags.toList)(
-                  tag => nextTagSeqNrFor(persistentRepr.persistenceId, tag).map(n => tag -> n)
-                )
-
-              tagSeqNrsF.map { tagSeqNrsF =>
-                val json = messageAsJson()
-
-                val timeBasedUUID = uuidGenerator.nextUuid()
-                json.put(Fields.Tags, JsonArray.from(tags.toList.asJava))
-                json.put(Fields.TagSeqNrs,
-                         JsonArray.from(
-                           tagSeqNrsF.map {
-                             case (tag, tagSeqNr) =>
-                               JsonObject
-                                 .create()
-                                 .put(Fields.Tag, tag)
-                                 .put(Fields.TagSeqNr, tagSeqNr)
-                           }.asJava
-                         ))
-                json.put(Fields.Ordering, TimeBasedUUIDSerialization.toSortableString(timeBasedUUID))
-              }
-
-            } else {
-              Future.successful(messageAsJson())
-            }
+          case other =>
+            SerializedMessage
+              .serialize(serialization, other.asInstanceOf[AnyRef])
+              .map(serialized => new MessageForWrite(persistentRepr.sequenceNr, serialized))
         }
       }
 
-    serializedMessages.map { messagesJson =>
-      val pid = write.persistenceId
-
-      val insert: JsonObject = JsonObject
-        .create()
-        .put(Fields.Type, CouchbaseSchema.JournalEntryType)
-        .put(Fields.PersistenceId, pid)
-        // assumed all msgs have the same writerUuid
-        .put(Fields.WriterUuid, write.payload.head.writerUuid.toString)
-        .put(Fields.Messages, JsonArray.from(messagesJson.asJava))
-
-      JsonDocument.create(s"$pid-${write.lowestSequenceNr}", insert)
+    messagesForWrite.map { messages =>
+      CouchbaseSchema.atomicWriteAsJsonDoc(
+        write.persistenceId,
+        write.payload.head.writerUuid.toString,
+        messages,
+        write.lowestSequenceNr
+      )
     }(ExecutionContexts.sameThreadExecutionContext)
   }
 

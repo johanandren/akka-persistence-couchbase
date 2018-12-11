@@ -5,6 +5,7 @@
 package akka.persistence.couchbase
 
 import akka.actor.{ActorSystem, ExtendedActorSystem}
+import akka.persistence.couchbase.internal.CouchbaseSchema.MessageForWrite
 import akka.persistence.couchbase.internal.{CouchbaseSchema, SerializedMessage}
 import akka.serialization.{AsyncSerializerWithStringManifest, SerializationExtension}
 import akka.testkit.TestKit
@@ -79,7 +80,8 @@ class SerializationSpec extends WordSpec with Matchers with BeforeAndAfterAll wi
     "serialize and deserialize events" in {
       val event = MyEvent(42)
       val serializedEvent = SerializedMessage.serialize(serialization, event).futureValue
-      val json = CouchbaseSchema.serializedMessageToObject(serializedEvent)
+      val msgForWrite = new MessageForWrite(23L, serializedEvent)
+      val json = CouchbaseSchema.serializedMessageAsJson(msgForWrite)
       val deserialized = SerializedMessage.fromJsonObject(serialization, json).futureValue
       deserialized should ===(event)
     }
@@ -87,15 +89,17 @@ class SerializationSpec extends WordSpec with Matchers with BeforeAndAfterAll wi
     "serialize and deserialize events with an async serializer" in {
       val event = MyEventAsync(42)
       val serializedEvent = SerializedMessage.serialize(serialization, event).futureValue
-      val json = CouchbaseSchema.serializedMessageToObject(serializedEvent)
+      val msgForWrite = new MessageForWrite(23L, serializedEvent)
+      val json = CouchbaseSchema.serializedMessageAsJson(msgForWrite)
       val deserialized = SerializedMessage.fromJsonObject(serialization, json).futureValue
       deserialized should ===(event)
     }
 
     "serialize native json" in {
       val event = MyEventNative(42)
-      val serializedEvent = SerializedMessage.serialize(serialization, event)
-      val json: JsonObject = CouchbaseSchema.serializedMessageToObject(serializedEvent.futureValue)
+      val serializedEvent = SerializedMessage.serialize(serialization, event).futureValue
+      val msgForWrite = new MessageForWrite(23L, serializedEvent)
+      val json: JsonObject = CouchbaseSchema.serializedMessageAsJson(msgForWrite)
       // serialized form: {"ser_manifest":"js","payload":{"n":42},"ser_id":2001}
       val deserialized = SerializedMessage.fromJsonObject(serialization, json).futureValue
       deserialized should ===(event)

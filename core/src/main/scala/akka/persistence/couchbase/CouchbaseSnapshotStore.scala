@@ -109,16 +109,9 @@ final class CouchbaseSnapshotStore(cfg: Config, configPath: String) extends Snap
     val ser: Future[SerializedMessage] = SerializedMessage.serialize(serialization, snapshot.asInstanceOf[AnyRef])
 
     ser.map { serializedMessage =>
-      val json: JsonObject =
-        CouchbaseSchema
-          .serializedMessageToObject(serializedMessage)
-          .put(Fields.Type, CouchbaseSchema.SnapshotEntryType)
-          .put(Fields.Timestamp, metadata.timestamp)
-          .put(Fields.SequenceNr, metadata.sequenceNr)
-          .put(Fields.PersistenceId, metadata.persistenceId)
-
+      val doc = CouchbaseSchema.snapshotAsJsonDoc(serializedMessage, metadata)
       session
-        .upsert(JsonDocument.create(CouchbaseSchema.snapshotIdFor(metadata), json), settings.writeSettings)
+        .upsert(doc, settings.writeSettings)
         .map(_ => ())(ExecutionContexts.sameThreadExecutionContext)
     }
   }

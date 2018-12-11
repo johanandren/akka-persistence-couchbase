@@ -4,22 +4,22 @@
 
 package akka.persistence.couchbase.internal
 
-import java.util.Base64
+import java.util.{Base64, UUID}
 
 import akka.actor.{ActorSystem, ExtendedActorSystem}
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
-import akka.persistence.{PersistentRepr, SnapshotMetadata}
-import akka.persistence.couchbase.CouchbaseJournal.TaggedPersistentRepr
 import akka.persistence.couchbase._
+import akka.persistence.{PersistentRepr, SnapshotMetadata}
 import akka.serialization.{AsyncSerializer, Serialization, Serializers}
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.util.OptionVal
 import com.couchbase.client.java.document.JsonDocument
-import com.couchbase.client.java.document.json.JsonObject
-import com.couchbase.client.java.query.{N1qlParams, N1qlQuery, ParameterizedN1qlQuery, SimpleN1qlQuery}
+import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
+import com.couchbase.client.java.query.{N1qlParams, N1qlQuery}
 
 import scala.collection.JavaConverters._
+import scala.collection.{immutable => im}
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
@@ -30,6 +30,15 @@ import scala.util.control.NonFatal
  */
 @InternalApi
 private[akka] final object CouchbaseSchema {
+
+  sealed class MessageForWrite(val sequenceNr: Long, val msg: SerializedMessage)
+  final class TaggedMessageForWrite(sequenceNr: Long,
+                                    msg: SerializedMessage,
+                                    val ordering: UUID,
+                                    val tagsWithSeqNrs: im.Seq[(String, Long)])
+      extends MessageForWrite(sequenceNr, msg)
+
+  final case class TaggedPersistentRepr(pr: PersistentRepr, tags: Set[String], offset: UUID)
 
   object Fields {
     val Type = "type"
@@ -275,7 +284,8 @@ private[akka] final object CouchbaseSchema {
         .put(Fields.DeletedTo, deletedTo)
     )
 
-  def serializedMessageToObject(msg: SerializedMessage): JsonObject = {
+  // the basic form, shared by snapshots and events
+  private def serializedMessageAsJson(msg: SerializedMessage): JsonObject = {
     val json = JsonObject
       .create()
       .put(Fields.SerializerManifest, msg.manifest)
@@ -288,8 +298,59 @@ private[akka] final object CouchbaseSchema {
       case OptionVal.Some(jsonPayload) =>
         json.put(Fields.JsonPayload, jsonPayload)
     }
-
     json
+  }
+
+  def snapshotAsJsonDoc(msg: SerializedMessage, metadata: SnapshotMetadata): JsonDocument = {
+    val json = serializedMessageAsJson(msg)
+      .put(Fields.Type, CouchbaseSchema.SnapshotEntryType)
+      .put(Fields.Timestamp, metadata.timestamp)
+      .put(Fields.SequenceNr, metadata.sequenceNr)
+      .put(Fields.PersistenceId, metadata.persistenceId)
+    JsonDocument.create(CouchbaseSchema.snapshotIdFor(metadata), json)
+  }
+
+  def serializedMessageAsJson(messageForWrite: MessageForWrite): JsonObject = {
+    val json = serializedMessageAsJson(messageForWrite.msg)
+      .put(Fields.SequenceNr, messageForWrite.sequenceNr)
+
+    messageForWrite match {
+      case tagged: TaggedMessageForWrite =>
+        json
+          .put(Fields.SequenceNr, tagged.sequenceNr)
+          .put(Fields.Ordering, TimeBasedUUIDSerialization.toSortableString(tagged.ordering))
+          // for the index an array with the tags straight up
+          .put(Fields.Tags, JsonArray.from(tagged.tagsWithSeqNrs.map { case (tag, _) => tag }.asJava))
+          // for the gap detection, tag and sequence number per tag
+          .put(
+            Fields.TagSeqNrs,
+            JsonArray.from(
+              tagged.tagsWithSeqNrs.map {
+                case (tag, tagSeqNr) =>
+                  JsonObject
+                    .create()
+                    .put(Fields.Tag, tag)
+                    .put(Fields.TagSeqNr, tagSeqNr)
+              }.asJava
+            )
+          )
+      case untagged => json
+    }
+  }
+
+  def atomicWriteAsJsonDoc(pid: String,
+                           writerUuid: Any,
+                           messages: im.Seq[MessageForWrite],
+                           lowestSequenceNr: Long): JsonDocument = {
+    val insert: JsonObject = JsonObject
+      .create()
+      .put(Fields.Type, CouchbaseSchema.JournalEntryType)
+      .put(Fields.PersistenceId, pid)
+      // assumed all msgs have the same writerUuid
+      .put(Fields.WriterUuid, writerUuid)
+      .put(Fields.Messages, JsonArray.from(messages.map(serializedMessageAsJson).asJava))
+
+    JsonDocument.create(s"$pid-$lowestSequenceNr", insert)
   }
 
   def deserializeEvent[T](
@@ -319,7 +380,7 @@ private[akka] final object CouchbaseSchema {
     val sequenceNr = value.getLong(Fields.SequenceNr)
     val tags: Set[String] = value.getArray(Fields.Tags).asScala.map(_.toString).toSet
     SerializedMessage.fromJsonObject(serialization, value).map { payload =>
-      CouchbaseJournal.TaggedPersistentRepr(
+      TaggedPersistentRepr(
         PersistentRepr(payload = payload,
                        sequenceNr = sequenceNr,
                        persistenceId = persistenceId,
