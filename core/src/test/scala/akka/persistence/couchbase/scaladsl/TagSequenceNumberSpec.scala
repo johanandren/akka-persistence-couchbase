@@ -2,13 +2,17 @@
  * Copyright (C) 2018 Lightbend Inc. <http://www.lightbend.com>
  */
 
-/*
- * Copyright (C) 2009-2018 Lightbend Inc. <https://www.lightbend.com>
- */
 package akka.persistence.couchbase.scaladsl
+
+import java.util.UUID
+
 import akka.persistence.couchbase.TestActor
-import akka.persistence.couchbase.internal.CouchbaseSchema.Queries
-import akka.persistence.couchbase.internal.{AsyncCouchbaseSession, TagSequenceNumbering}
+import akka.persistence.couchbase.internal.CouchbaseSchema.{Queries, TaggedMessageForWrite}
+import akka.persistence.couchbase.internal._
+import akka.persistence.query.{NoOffset, TimeBasedUUID}
+import akka.serialization.SerializationExtension
+import akka.stream.scaladsl.Sink
+import akka.stream.testkit.scaladsl.TestSink
 import com.couchbase.client.java.query.N1qlParams
 import com.couchbase.client.java.query.consistency.ScanConsistency
 
@@ -55,6 +59,58 @@ class TagSequenceNumberSpec
       readingOurOwnWrites {
         currentTagSeqNrFromDb(pid, tag1).futureValue should ===(Some(3))
       }
+    }
+
+    "cause query to fail when there are gaps" in {
+      val pid = nextPersistenceId()
+      val writerUUID = UUID.randomUUID().toString
+      val tag = "tacos"
+      val generator = UUIDGenerator()
+      var tagSeqNr = 0L
+      def nextTagSeqNr = {
+        tagSeqNr += 1
+        tagSeqNr
+      }
+
+      // not really important
+      val serializedPayload = SerializedMessage.serialize(SerializationExtension(system), "whatever").futureValue
+
+      // let's fake it till we make it
+      val firstTenUuids = (0L to 10L).map { seqNr =>
+        val uuid = generator.nextUuid()
+        val message = new TaggedMessageForWrite(
+          seqNr,
+          serializedPayload,
+          uuid,
+          (tag -> nextTagSeqNr) :: Nil
+        )
+        val document = CouchbaseSchema.atomicWriteAsJsonDoc(pid, writerUUID, message :: Nil, seqNr)
+        couchbaseSession.insert(document).futureValue
+        uuid
+      }
+
+      // make a gap
+      nextTagSeqNr
+      val lastSeqNr = 11L
+      val lastMessage = new TaggedMessageForWrite(
+        lastSeqNr,
+        serializedPayload,
+        generator.nextUuid(),
+        (tag -> nextTagSeqNr) :: Nil
+      )
+      val document = CouchbaseSchema.atomicWriteAsJsonDoc(pid, writerUUID, lastMessage :: Nil, lastSeqNr)
+      couchbaseSession.insert(document).futureValue
+
+      awaitAssert(
+        queries.currentEventsByTag(tag, TimeBasedUUID(firstTenUuids.head)).runWith(Sink.head).futureValue,
+        readOurOwnWritesTimeout
+      )
+
+      // now we know all events are visible, lets do that query from the start
+      val streamProbe = queries.eventsByTag(tag, NoOffset).runWith(TestSink.probe)
+      streamProbe.request(12)
+      streamProbe.expectNextN(10)
+      streamProbe.expectError() // should fail because of the gap
     }
 
   }

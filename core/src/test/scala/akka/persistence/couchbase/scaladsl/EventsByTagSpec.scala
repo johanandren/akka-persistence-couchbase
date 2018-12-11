@@ -354,6 +354,7 @@ class EventsByTagSpec extends AbstractQuerySpec("EventsByTagSpec") {
       val allRead = (tag1FirstThree ++ tag1Fromoffset).map(_.event.toString).toSet
       allRead should ===(Set(msg1, msg3, msg5, msg7))
     }
+
   }
 
 }
