@@ -104,7 +104,7 @@ class CouchbaseJournal(config: Config, configPath: String)
   override def receivePluginInternal: Receive = {
     case PersistentActorTerminated(pid) =>
       log.debug("Persistent actor [{}] stopped, flushing tag-seq-nrs")
-      evicSeqNrsFor(pid)
+      evictSeqNrsFor(pid)
   }
 
   override def asyncWriteMessages(messages: im.Seq[AtomicWrite]): Future[im.Seq[Try[Unit]]] = {
