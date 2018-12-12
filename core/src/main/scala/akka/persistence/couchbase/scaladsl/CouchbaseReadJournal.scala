@@ -28,9 +28,12 @@ import akka.stream.ActorMaterializer
 import akka.stream.alpakka.couchbase.CouchbaseSessionRegistry
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.stream.scaladsl.{Sink, Source}
+import com.couchbase.client.java.document.json.JsonObject
 import com.couchbase.client.java.query._
 import com.typesafe.config.Config
 
+import scala.collection.mutable
+import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration._
@@ -63,7 +66,7 @@ object CouchbaseReadJournal {
  * absolute path corresponding to the identifier, which is `"couchbase-journal.read"`
  * for the default [[CouchbaseReadJournal#Identifier]]. See `reference.conf`.
  */
-class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, configPath: String)
+final class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, configPath: String)
     extends ReadJournal
     with AsyncCouchbaseSession
     with EventsByPersistenceIdQuery
@@ -309,18 +312,32 @@ class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, configPath:
 
       @volatile var lastUUID = TimeBasedUUIDs.MinUUID
 
-      taggedRows.mapAsync(1) { row: AsyncN1qlQueryRow =>
-        val value = row.value()
-        CouchbaseSchema.deserializeTaggedEvent(value, Long.MaxValue, serialization).map { tpr =>
-          if (TimeBasedUUIDComparator.comparator.compare(tpr.offset, lastUUID) < 0)
-            throw new RuntimeException(
-              s"Saw time based uuids go backward, last previous [$lastUUID], saw [${tpr.offset}]"
-            )
-          else
-            lastUUID = tpr.offset
-          EventEnvelope(Offset.timeBasedUUID(tpr.offset), tpr.pr.persistenceId, tpr.pr.sequenceNr, tpr.pr.payload)
+      taggedRows
+        .mapAsync(1) { row: AsyncN1qlQueryRow =>
+          val json = row.value()
+          CouchbaseSchema
+            .deserializeTaggedEvent(json, Long.MaxValue, serialization)
         }
-      }
+        .statefulMapConcat { () =>
+          val lastTagSeqNrPerPid = mutable.Map.empty[String, Long]
+
+          { tpr =>
+            val tagSeqNr = tpr.tagSequenceNumbers(tag)
+            val previousTagSeqNr = lastTagSeqNrPerPid.get(tpr.pr.persistenceId)
+
+            previousTagSeqNr match {
+              case None if tagSeqNr == 1 => // ok, not seen before for pid and first seqnr
+              case Some(prev) if prev == (tagSeqNr - 1) => // ok
+              case _ =>
+                throw new RuntimeException(
+                  s"Detected out of order tagged event, for tag [$tag], persistence id [${tpr.pr.persistenceId}], sequence number [${tpr.pr.sequenceNr}]"
+                )
+            }
+            lastTagSeqNrPerPid.put(tpr.pr.persistenceId, tagSeqNr)
+            EventEnvelope(Offset.timeBasedUUID(tpr.offset), tpr.pr.persistenceId, tpr.pr.sequenceNr, tpr.pr.payload) :: Nil
+          }
+        }
+
     }
 
   /**

@@ -38,7 +38,10 @@ private[akka] final object CouchbaseSchema {
                                     val tagsWithSeqNrs: im.Seq[(String, Long)])
       extends MessageForWrite(sequenceNr, msg)
 
-  final case class TaggedPersistentRepr(pr: PersistentRepr, tags: Set[String], offset: UUID)
+  final case class TaggedPersistentRepr(pr: PersistentRepr,
+                                        tags: Set[String],
+                                        tagSequenceNumbers: Map[String, Long],
+                                        offset: UUID)
 
   object Fields {
     val Type = "type"
@@ -379,6 +382,13 @@ private[akka] final object CouchbaseSchema {
     val writerUuid = value.getString(Fields.WriterUuid)
     val sequenceNr = value.getLong(Fields.SequenceNr)
     val tags: Set[String] = value.getArray(Fields.Tags).asScala.map(_.toString).toSet
+    val tagSequenceNumbers = value
+      .getArray(Fields.TagSeqNrs)
+      .asScala
+      .map {
+        case obj: JsonObject => obj.getString(Fields.Tag) -> (obj.getLong(Fields.TagSeqNr): Long)
+      }
+      .toMap
     SerializedMessage.fromJsonObject(serialization, value).map { payload =>
       TaggedPersistentRepr(
         PersistentRepr(payload = payload,
@@ -386,6 +396,7 @@ private[akka] final object CouchbaseSchema {
                        persistenceId = persistenceId,
                        writerUuid = writerUuid),
         tags,
+        tagSequenceNumbers,
         TimeBasedUUIDSerialization.fromSortableString(value.getString(Fields.Ordering))
       )
     }

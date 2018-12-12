@@ -76,7 +76,7 @@ class TagSequenceNumberSpec
       val serializedPayload = SerializedMessage.serialize(SerializationExtension(system), "whatever").futureValue
 
       // let's fake it till we make it
-      val firstTenUuids = (0L to 10L).map { seqNr =>
+      val firstTenUuids = (1L to 10L).map { seqNr =>
         val uuid = generator.nextUuid()
         val message = new TaggedMessageForWrite(
           seqNr,
@@ -101,8 +101,9 @@ class TagSequenceNumberSpec
       val document = CouchbaseSchema.atomicWriteAsJsonDoc(pid, writerUUID, lastMessage :: Nil, lastSeqNr)
       couchbaseSession.insert(document).futureValue
 
+      // both current and live query should fail because of it
       awaitAssert(
-        queries.currentEventsByTag(tag, TimeBasedUUID(firstTenUuids.head)).runWith(Sink.head).futureValue,
+        queries.currentEventsByTag(tag, TimeBasedUUID(firstTenUuids.head)).runWith(Sink.head).failed.futureValue,
         readOurOwnWritesTimeout
       )
 
