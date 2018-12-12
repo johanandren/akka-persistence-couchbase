@@ -6,9 +6,9 @@ package akka.persistence.couchbase.scaladsl
 
 import java.util.UUID
 
-import akka.persistence.couchbase.TestActor
 import akka.persistence.couchbase.internal.CouchbaseSchema.{Queries, TaggedMessageForWrite}
 import akka.persistence.couchbase.internal._
+import akka.persistence.couchbase.{OutOfOrderEventException, TestActor}
 import akka.persistence.query.{NoOffset, TimeBasedUUID}
 import akka.serialization.SerializationExtension
 import akka.stream.scaladsl.Sink
@@ -103,7 +103,12 @@ class TagSequenceNumberSpec
 
       // both current and live query should fail because of it
       awaitAssert(
-        queries.currentEventsByTag(tag, TimeBasedUUID(firstTenUuids.head)).runWith(Sink.head).failed.futureValue,
+        {
+          val failure =
+            queries.currentEventsByTag(tag, TimeBasedUUID(firstTenUuids.head)).runWith(Sink.seq).failed.futureValue
+
+          failure shouldBe an[OutOfOrderEventException]
+        },
         readOurOwnWritesTimeout
       )
 
@@ -111,7 +116,8 @@ class TagSequenceNumberSpec
       val streamProbe = queries.eventsByTag(tag, NoOffset).runWith(TestSink.probe)
       streamProbe.request(12)
       streamProbe.expectNextN(10)
-      streamProbe.expectError() // should fail because of the gap
+      val error = streamProbe.expectError() // should fail because of the gap
+      error shouldBe an[OutOfOrderEventException]
     }
 
   }

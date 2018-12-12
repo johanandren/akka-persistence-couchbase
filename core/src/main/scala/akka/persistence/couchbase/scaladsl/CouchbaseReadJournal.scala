@@ -20,7 +20,7 @@ import akka.persistence.couchbase.internal.{
   UUIDTimestamp
 }
 import akka.persistence.couchbase.internal.CouchbaseSchema.Fields
-import akka.persistence.couchbase.CouchbaseReadJournalSettings
+import akka.persistence.couchbase.{CouchbaseReadJournalSettings, OutOfOrderEventException}
 import akka.persistence.query._
 import akka.persistence.query.scaladsl._
 import akka.serialization.{Serialization, SerializationExtension}
@@ -330,7 +330,7 @@ final class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, confi
               case None if offset == NoOffset && tagSeqNr == 1 => // ok, not seen before for pid and first seqnr
               case Some(prev) if prev == (tagSeqNr - 1) => // ok
               case _ =>
-                throw new RuntimeException(
+                throw new OutOfOrderEventException(
                   s"Detected out of order tagged event, for tag [$tag], persistence id [${tpr.pr.persistenceId}], sequence number [${tpr.pr.sequenceNr}], " +
                   s"tagSeqNr $tagSeqNr, previous tagSeqNr: $previousTagSeqNr"
                 )

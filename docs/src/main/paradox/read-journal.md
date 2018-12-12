@@ -53,6 +53,13 @@ The offset back in time is configured through the setting `couchbase-journal.rea
 By default it is set to 5 seconds, this means that at any time a query is performed it will only see events up until
 5 seconds ago. For the live query it will keep catching up to 5 seconds ago as time passes by. 
 
+If the `eventual-consistency-delay` is tuned too low or clock skew larger than it happens it could mean that tagged 
+events are seen out of order, to detect this the tagged events have a gap free sequence number per persistence id, 
+when streaming events and an out of order event is detected the stream is failed with an `akka.persistence.couchbase.OutOfOrderEventException`.
+
+In a scenario where a projection is created from the streamed events this could mean the projection needs to be discarded
+and recreated.
+
 ### Events by tag offsets
 
 The event by tag stream supports using `akka.persistence.query.TimeBasedUUID`s to offset into stream of tagged events,
@@ -62,11 +69,6 @@ Offsets can be created from unix timestamps using `akka.persistence.couchbase.UU
 
 ## Caveats
 
- * **Important** Tagged events may be missed in the events by tag query in the following scenarios: (We will address this in a later milestone, 
-     tracked by [#97](https://github.com/akka/akka-persistence-couchbase/issues/97))
-    * if there is clock skew on the Akka nodes that is larger than the `couchbase-journal.read.events-by-tag.eventual-consistency-delay`
-    * if `couchbase-journal.read.events-by-tag.eventual-consistency-delay` is tuned so low that the couchbase cluster
-     hasn't reached consistency at that time
  * As the indexes used to perform the queries are eventually consistent (even for a single writer node) there 
    is no guarantee that an immediate query will see the latest writes.
  
