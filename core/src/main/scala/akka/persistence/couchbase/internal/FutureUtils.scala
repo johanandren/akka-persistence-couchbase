@@ -3,10 +3,16 @@
  */
 
 package akka.persistence.couchbase.internal
+import akka.annotation.InternalApi
+
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 
-object FutureUtils {
+/**
+ * INTERNAL API
+ */
+@InternalApi
+private[akka] object FutureUtils {
 
   /**
    * Like Future.traverse but invokes `toFuture` on one A at a time, and does not execute the next one until

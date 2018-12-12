@@ -72,7 +72,7 @@ import scala.concurrent.{ExecutionContext, Future}
    * Remove all entries for `pid`. It is expected that no updates for the specific persistence id happens until
    * this method has returned.
    */
-  def flushSeqNrsFor(pid: PersistenceId): Unit = {
+  def evicSeqNrsFor(pid: PersistenceId): Unit = {
     val keys = taggingPerPidSequenceNumbers.keySet.iterator()
     while (keys.hasNext) {
       val key @ (keyPid, _) = keys.next()

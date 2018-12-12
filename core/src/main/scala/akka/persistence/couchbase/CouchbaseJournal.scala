@@ -34,7 +34,7 @@ import scala.util.{Failure, Success, Try}
 @InternalApi
 private[akka] object CouchbaseJournal {
 
-  case class PersistentActorTerminated(persistenceId: String)
+  final case class PersistentActorTerminated(persistenceId: String)
 
   private val ExtraSuccessFulUnit: Try[Unit] = Success(())
 
@@ -104,7 +104,7 @@ class CouchbaseJournal(config: Config, configPath: String)
   override def receivePluginInternal: Receive = {
     case PersistentActorTerminated(pid) =>
       log.debug("Persistent actor [{}] stopped, flushing tag-seq-nrs")
-      flushSeqNrsFor(pid)
+      evicSeqNrsFor(pid)
   }
 
   override def asyncWriteMessages(messages: im.Seq[AtomicWrite]): Future[im.Seq[Try[Unit]]] = {
