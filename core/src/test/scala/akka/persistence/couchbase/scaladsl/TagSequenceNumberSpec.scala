@@ -38,27 +38,38 @@ class TagSequenceNumberSpec
       val tag2 = "tag-2"
       system.log.debug("tag1: {}, tag2: {}", tag1, tag2)
 
-      persistentActor ! s"1 $tag1"
-      probe.expectMsg(s"1 $tag1-done")
-      persistentActor ! s"2 $tag2"
-      probe.expectMsg(s"2 $tag2-done")
-      persistentActor ! s"3 $tag1"
-      probe.expectMsg(s"3 $tag1-done")
-
-      readingOurOwnWrites {
-        currentTagSeqNrFromDb(pid, tag1).futureValue should ===(Some(2))
+      var messageCounter = 0L
+      def messageN() = {
+        messageCounter += 1
+        messageCounter
       }
-      probe.watch(persistentActor)
-      persistentActor ! TestActor.Stop
-      probe.expectMsg("stopping")
-      probe.expectTerminated(persistentActor, 3.seconds)
 
-      val persistentActorIncarnation2 = system.actorOf(TestActor.props(pid))
-      persistentActorIncarnation2 ! s"4 $tag1"
-      probe.expectMsg(s"4 $tag1-done")
-      readingOurOwnWrites {
-        currentTagSeqNrFromDb(pid, tag1).futureValue should ===(Some(3))
+      var currentIncarnation = persistentActor
+      def writeMessage(tag: String): Unit = {
+        val n = messageN()
+        currentIncarnation ! s"$n $tag"
+        probe.expectMsg(s"$n $tag-done")
       }
+
+      (1 to 5).foreach { restartN =>
+        writeMessage(tag1)
+        writeMessage(tag2)
+        writeMessage(tag1)
+
+        readingOurOwnWrites {
+          currentTagSeqNrFromDb(pid, tag1).futureValue should ===(Some(3 * restartN - 1))
+        }
+        probe.watch(persistentActor)
+        persistentActor ! TestActor.Stop
+        probe.expectTerminated(persistentActor, 3.seconds)
+
+        currentIncarnation = system.actorOf(TestActor.props(pid))
+        writeMessage(tag1)
+        readingOurOwnWrites {
+          currentTagSeqNrFromDb(pid, tag1).futureValue should ===(Some(3 * restartN))
+        }
+      }
+
     }
 
     "cause query to fail when there are gaps" in {

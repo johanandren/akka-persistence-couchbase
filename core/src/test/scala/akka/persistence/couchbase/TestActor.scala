@@ -75,6 +75,5 @@ class TestActor(override val persistenceId: String, override val journalPluginId
 
     case TestActor.Stop =>
       context.stop(self)
-      sender() ! "stopping"
   }
 }
