@@ -310,8 +310,6 @@ final class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, confi
             )
           )
 
-      @volatile var lastUUID = TimeBasedUUIDs.MinUUID
-
       taggedRows
         .mapAsync(1) { row: AsyncN1qlQueryRow =>
           val json = row.value()
@@ -319,18 +317,22 @@ final class CouchbaseReadJournal(eas: ExtendedActorSystem, config: Config, confi
             .deserializeTaggedEvent(json, Long.MaxValue, serialization)
         }
         .statefulMapConcat { () =>
+          // out of order detection
           val lastTagSeqNrPerPid = mutable.Map.empty[String, Long]
 
           { tpr =>
             val tagSeqNr = tpr.tagSequenceNumbers(tag)
+            log.debug("Saw tagSeqNr {} for tag {} and pid {}", tagSeqNr, tag, tpr.pr.persistenceId)
             val previousTagSeqNr = lastTagSeqNrPerPid.get(tpr.pr.persistenceId)
 
             previousTagSeqNr match {
-              case None if tagSeqNr == 1 => // ok, not seen before for pid and first seqnr
+              case None if offset != NoOffset => // not seen before for pid and we don't know the first seqnr from offset
+              case None if offset == NoOffset && tagSeqNr == 1 => // ok, not seen before for pid and first seqnr
               case Some(prev) if prev == (tagSeqNr - 1) => // ok
               case _ =>
                 throw new RuntimeException(
-                  s"Detected out of order tagged event, for tag [$tag], persistence id [${tpr.pr.persistenceId}], sequence number [${tpr.pr.sequenceNr}]"
+                  s"Detected out of order tagged event, for tag [$tag], persistence id [${tpr.pr.persistenceId}], sequence number [${tpr.pr.sequenceNr}], " +
+                  s"tagSeqNr $tagSeqNr, previous tagSeqNr: $previousTagSeqNr"
                 )
             }
             lastTagSeqNrPerPid.put(tpr.pr.persistenceId, tagSeqNr)
