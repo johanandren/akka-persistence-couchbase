@@ -8,7 +8,6 @@ import java.util.concurrent.TimeUnit
 
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
-import akka.stream.alpakka.couchbase.internal.CouchbaseSessionJavaAdapter
 import akka.stream.alpakka.couchbase.{javadsl, CouchbaseWriteSettings}
 import akka.stream.alpakka.couchbase.scaladsl.CouchbaseSession
 import akka.stream.scaladsl.Source
@@ -27,10 +26,9 @@ import scala.concurrent.Future
 import scala.concurrent.duration.FiniteDuration
 
 /**
+ * INTERNAL API
  *
  * @param cluster if provided, it will be shut down when `close()` is called
- *
- * InternalAPI
  */
 @InternalApi
 final private[couchbase] class CouchbaseSessionImpl(asyncBucket: AsyncBucket, cluster: Option[AsyncCluster])

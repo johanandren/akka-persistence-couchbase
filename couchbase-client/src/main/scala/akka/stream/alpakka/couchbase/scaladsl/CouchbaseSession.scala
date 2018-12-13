@@ -17,7 +17,7 @@ import com.couchbase.client.java.document.{Document, JsonDocument}
 import com.couchbase.client.java.query._
 import com.couchbase.client.java.query.util.IndexInfo
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.FiniteDuration
 
 object CouchbaseSession {
@@ -26,12 +26,8 @@ object CouchbaseSession {
    * Create a session against the given bucket. The couchbase client used to connect will be created and then closed when
    * the session is closed.
    */
-  def apply(settings: CouchbaseSessionSettings, bucketName: String): Future[CouchbaseSession] = {
-    //TODO is it Okay to use global context here
-    implicit val ec = ExecutionContexts.global
-
-    // FIXME here be blocking
-    // FIXME make the settings => cluster logic public API so we can reuse it in journal?
+  def apply(settings: CouchbaseSessionSettings,
+            bucketName: String)(implicit ec: ExecutionContext): Future[CouchbaseSession] = {
     //wrap CouchbaseAsyncCluster.create up in the Future because it's blocking
     val asyncCluster: Future[AsyncCluster] =
       Future(settings.environment match {
@@ -56,6 +52,8 @@ object CouchbaseSession {
 }
 
 /**
+ * Scala API: A session allowing querying and interacting with a specific couchbase bucket
+ *
  * Not for user extension
  */
 @DoNotInherit

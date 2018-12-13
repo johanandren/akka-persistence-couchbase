@@ -61,30 +61,16 @@ final class CouchbaseWriteSettings private (val parallelism: Int,
                          timeout: FiniteDuration = timeout) =
     new CouchbaseWriteSettings(parallelism, replicateTo, persistTo, timeout)
 
-  override def equals(other: Any): Boolean = other match {
-    case that: CouchbaseWriteSettings =>
-      parallelism == that.parallelism &&
-      replicateTo == that.replicateTo &&
-      persistTo == that.persistTo &&
-      timeout == that.timeout
-    case _ => false
-  }
-
-  override def hashCode(): Int = {
-    31 * parallelism.hashCode() + 31 * replicateTo.hashCode() + 31 * persistTo.hashCode()
-    +31 * timeout.hashCode()
-  }
-
   override def toString: String = s"CouchbaseWriteSettings($parallelism, $replicateTo, $persistTo, $timeout)"
 }
 
 object CouchbaseSessionSettings {
 
   /**
-   * Scala API:
+   * Scala API: Load the session from the given config object, expects the config object to have the fields `username`,
+   * `password` and `nodes`. Using it means first looking your config namespace up yourself using `config.getConfig("some.path")`.
    */
   def apply(config: Config): CouchbaseSessionSettings = {
-    // FIXME environment from config
     val username = config.getString("username")
     val password = config.getString("password")
     val nodes = config.getStringList("nodes").asScala.toList
@@ -104,7 +90,8 @@ object CouchbaseSessionSettings {
     apply(username, password)
 
   /**
-   * Java API:
+   * Java API: Load the session from the given config object, expects the config object to have the fields `username`,
+   * `password` and `nodes`. Using it means first looking your config namespace up yourself using `config.getConfig("some.path")`.
    */
   def create(config: Config): CouchbaseSessionSettings = apply(config)
 

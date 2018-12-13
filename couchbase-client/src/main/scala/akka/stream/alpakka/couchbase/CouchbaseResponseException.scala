@@ -6,7 +6,10 @@ package akka.stream.alpakka.couchbase
 import akka.annotation.InternalApi
 import com.couchbase.client.java.document.json.JsonObject
 
-final class CouchbaseResponseException(val msg: String, val code: Option[Int]) extends RuntimeException(msg) {
+/**
+ * Describes a Couchbase related failure with an error code
+ */
+final class CouchbaseResponseException(msg: String, val code: Option[Int]) extends RuntimeException(msg) {
 
   override def toString = s"CouchbaseResponseException($msg, $code)"
 }

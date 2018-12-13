@@ -110,7 +110,7 @@ class RequestTimeoutTestSpec extends WordSpec with Matchers with ScalaFutures wi
 
       assert(resultError.isInstanceOf[CouchbaseResponseException], resultError)
       val ex = resultError.asInstanceOf[CouchbaseResponseException]
-      assert(ex.msg === s"Timeout ${queryTimeout}ms exceeded")
+      assert(ex.getMessage === s"Timeout ${queryTimeout}ms exceeded")
       assert(ex.code === Some(1080))
     }
 

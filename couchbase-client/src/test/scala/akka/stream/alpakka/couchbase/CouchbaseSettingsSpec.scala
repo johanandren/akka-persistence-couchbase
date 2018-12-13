@@ -4,6 +4,7 @@
 
 package akka.stream.alpakka.couchbase
 
+import java.time.{Duration => JDuration}
 import com.couchbase.client.java.{PersistTo, ReplicateTo}
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
@@ -39,6 +40,16 @@ class CouchbaseSettingsSpec extends WordSpec with Matchers {
       modified.nodes should ===("example.com:123" :: Nil)
     }
 
+    "be equal based on the fields" in { // prerequisite for the session registry
+      val a = CouchbaseSessionSettings("scott", "tiger")
+        .withNodes("example.com:123")
+      val b = CouchbaseSessionSettings("scott", "tiger")
+        .withNodes("example.com:123")
+
+      a should ===(b)
+      a.hashCode === (b.hashCode())
+    }
+
   }
 
   "The couchbase write settings" must {
@@ -46,9 +57,12 @@ class CouchbaseSettingsSpec extends WordSpec with Matchers {
     "be created from both java and scala APIs" in {
       val scala = CouchbaseWriteSettings(1, ReplicateTo.NONE, PersistTo.THREE, 10.seconds)
       val java =
-        CouchbaseWriteSettings.create(1, ReplicateTo.NONE, PersistTo.THREE, _root_.java.time.Duration.ofSeconds(10))
+        CouchbaseWriteSettings.create(1, ReplicateTo.NONE, PersistTo.THREE, JDuration.ofSeconds(10))
 
-      scala should ===(java)
+      scala.parallelism should ===(java.parallelism)
+      scala.persistTo should ===(java.persistTo)
+      scala.replicateTo should ===(java.replicateTo)
+      scala.timeout.toMillis should ===(java.timeout.toMillis)
     }
 
   }

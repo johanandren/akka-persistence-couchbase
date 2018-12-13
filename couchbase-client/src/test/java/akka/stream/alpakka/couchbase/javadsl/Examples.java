@@ -86,7 +86,8 @@ public class Examples {
     // creation is async
     CompletionStage<CouchbaseSession> futureSession = CouchbaseSession.create(
         CouchbaseSessionSettings.create("username", "password"),
-        "bucket-name"
+        "bucket-name",
+        system.dispatcher()
     );
     // for the samples, be careful with blocking in actual code
     CouchbaseSession session = futureSession.toCompletableFuture().get(10, TimeUnit.SECONDS);

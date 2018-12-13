@@ -17,8 +17,9 @@ import scala.compat.java8.FutureConverters._
 import scala.concurrent.{Future, Promise}
 
 /**
- * The couchbase session registry makes it possible to share the Couchbase session(s) between the journal plugins
- * rather than creating a new Couchbase session per use site.
+ * The couchbase session registry makes it possible to share one Couchbase session(s) between multiple use sites
+ * in the same ActorSystem (important for the Couchbase Akka Persistence plugin where it is shared between journal,
+ * query plugin and snapshot plugin)
  */
 object CouchbaseSessionRegistry extends ExtensionId[CouchbaseSessionRegistry] with ExtensionIdProvider {
   def createExtension(system: ExtendedActorSystem): CouchbaseSessionRegistry =
@@ -77,7 +78,7 @@ final class CouchbaseSessionRegistry(system: ExtendedActorSystem) extends Extens
       // we won cas, initialize session
       def nodesAsString = key.settings.nodes.mkString("\"", "\", \"", "\"")
       log.info("Starting Couchbase session for nodes [{}]", nodesAsString)
-      promise.completeWith(CouchbaseSession(key.settings, key.bucketName))
+      promise.completeWith(CouchbaseSession(key.settings, key.bucketName)(system.dispatcher))
       val future = promise.future
       system.registerOnTermination {
         future.foreach { session =>

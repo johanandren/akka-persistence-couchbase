@@ -2,22 +2,22 @@
  * Copyright (C) 2018 Lightbend Inc. <http://www.lightbend.com>
  */
 
-package akka.stream.alpakka.couchbase.internal
+package akka.stream.alpakka.couchbase.impl
 
 import java.time.Duration
 import java.util.Optional
 import java.util.concurrent.CompletionStage
 
-import akka.{Done, NotUsed}
 import akka.annotation.InternalApi
 import akka.dispatch.ExecutionContexts
 import akka.stream.alpakka.couchbase.CouchbaseWriteSettings
 import akka.stream.alpakka.couchbase.javadsl.CouchbaseSession
 import akka.stream.alpakka.couchbase.scaladsl.{CouchbaseSession => ScalaCouchbaseSession}
 import akka.stream.javadsl.Source
+import akka.{Done, NotUsed}
 import com.couchbase.client.java.AsyncBucket
-import com.couchbase.client.java.document.{ByteArrayDocument, Document, JsonDocument}
 import com.couchbase.client.java.document.json.JsonObject
+import com.couchbase.client.java.document.{Document, JsonDocument}
 import com.couchbase.client.java.query.util.IndexInfo
 import com.couchbase.client.java.query.{N1qlQuery, Statement}
 

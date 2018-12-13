@@ -10,7 +10,7 @@ import java.util.concurrent.CompletionStage
 
 import akka.annotation.DoNotInherit
 import akka.dispatch.ExecutionContexts
-import akka.stream.alpakka.couchbase.internal.CouchbaseSessionJavaAdapter
+import akka.stream.alpakka.couchbase.impl.CouchbaseSessionJavaAdapter
 import akka.stream.alpakka.couchbase.scaladsl.{CouchbaseSession => ScalaDslCouchbaseSession}
 import akka.stream.alpakka.couchbase.{CouchbaseSessionSettings, CouchbaseWriteSettings}
 import akka.stream.javadsl.Source
@@ -22,6 +22,7 @@ import com.couchbase.client.java.query.{N1qlQuery, Statement}
 import com.couchbase.client.java.{AsyncBucket, Bucket}
 
 import scala.compat.java8.FutureConverters._
+import scala.concurrent.ExecutionContext
 
 object CouchbaseSession {
 
@@ -29,9 +30,11 @@ object CouchbaseSession {
    * Create a session against the given bucket. The couchbase client used to connect will be created and then closed when
    * the session is closed.
    */
-  def create(settings: CouchbaseSessionSettings, bucketName: String): CompletionStage[CouchbaseSession] =
+  def create(settings: CouchbaseSessionSettings,
+             bucketName: String,
+             executionContext: ExecutionContext): CompletionStage[CouchbaseSession] =
     ScalaDslCouchbaseSession
-      .apply(settings, bucketName)
+      .apply(settings, bucketName)(executionContext)
       .map(new CouchbaseSessionJavaAdapter(_).asInstanceOf[CouchbaseSession])(
         ExecutionContexts.sameThreadExecutionContext
       )
@@ -45,10 +48,11 @@ object CouchbaseSession {
 }
 
 /**
- * Not for user extension
+ * Java API: A session allowing querying and interacting with a specific couchbase bucket
  *
- * abstract class, otherwise static forwarders are missing for companion object if building with Scala 2.11
+ * Not for user extension
  */
+// must be an abstract class, otherwise static forwarders are missing for companion object if building with Scala 2.11
 @DoNotInherit
 abstract class CouchbaseSession {
 
