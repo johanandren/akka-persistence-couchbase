@@ -74,7 +74,7 @@ private[lagom] class CouchbaseProvider @Inject()(system: ActorSystem, cfg: Confi
   // that from Lagom it needs to be made public API
   // FIXME this should be the Java API of CouchbaseSession, when there is one
   lazy val couchbase: CouchbaseSession =
-    Await.result(CouchbaseSession.create(sessionSettings, bucket).toScala, 30.seconds)
+    Await.result(CouchbaseSession.create(sessionSettings, bucket, system.dispatcher).toScala, 30.seconds)
 
   override def get(): CouchbaseSession = couchbase
 }
