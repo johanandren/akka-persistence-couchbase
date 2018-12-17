@@ -7,6 +7,7 @@ import akka.annotation.InternalApi
 
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Success
 
 /**
  * INTERNAL API
@@ -22,7 +23,16 @@ private[akka] object FutureUtils {
   def traverseSequential[A, B](
       as: immutable.Seq[A]
   )(toFuture: A => Future[B])(implicit ec: ExecutionContext): Future[immutable.Seq[B]] =
-    foldLeftSequential(as)(Nil: List[B])((bs, a) => toFuture(a).map(b => b :: bs)).map(_.reverse)
+    foldLeftSequential(as)(Nil: List[B]) { (bs, a) =>
+      val f = toFuture(a)
+      f.value match {
+        case Some(Success(b)) =>
+          // already completed shortcut avoid scheduling
+          Future.successful(b :: bs)
+
+        case _ => f.map(b => b :: bs)
+      }
+    }.map(_.reverse)
 
   /**
    * Fold over `as` but invoke `toNextFuture` on one `A` at a time, waiting for it to complete before the next
@@ -32,6 +42,17 @@ private[akka] object FutureUtils {
       as: immutable.Seq[A]
   )(zero: B)(toNextFuture: (B, A) => Future[B])(implicit ec: ExecutionContext): Future[B] =
     if (as.isEmpty) Future.successful(zero)
-    else toNextFuture(zero, as.head).flatMap(b => foldLeftSequential(as.tail)(b)(toNextFuture))
+    else {
+      val f = toNextFuture(zero, as.head)
+
+      f.value match {
+        case Some(Success(b)) =>
+          // already completed shortcut avoid scheduling
+          foldLeftSequential(as.tail)(b)(toNextFuture)
+        case _ =>
+          f.flatMap(b => foldLeftSequential(as.tail)(b)(toNextFuture))
+      }
+
+    }
 
 }

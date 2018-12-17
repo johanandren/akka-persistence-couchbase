@@ -34,6 +34,27 @@ class FutureUtilsSpec extends WordSpec with Matchers with ScalaFutures {
       }
 
     }
+
+    "allow for efficient already-completed-future-traversal" in {
+      // no actual testing of how fast it is but since it is identical to
+      // the other one you can compare runtime of test case
+      @volatile var counter = -1
+
+      val result = FutureUtils
+        .traverseSequential(0 to 1000)(
+          n =>
+            Future.successful {
+              counter += 1
+              (n, counter)
+          }
+        )
+        .futureValue
+
+      forAll(result) {
+        case (n, c) =>
+          n should ===(c)
+      }
+    }
   }
 
 }

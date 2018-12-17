@@ -147,9 +147,17 @@ class CouchbaseJournal(config: Config, configPath: String)
               new TaggedMessageForWrite(persistentRepr.sequenceNr, serialized, uuidGenerator.nextUuid(), tagsAndSeqNrs)
 
           case other =>
-            SerializedMessage
+            val f = SerializedMessage
               .serialize(serialization, other.asInstanceOf[AnyRef])
-              .map(serialized => new MessageForWrite(persistentRepr.sequenceNr, serialized))
+
+            f.value match {
+              case Some(Success(serialized)) =>
+                // optimization when serializer is not async
+                Future.successful(new MessageForWrite(persistentRepr.sequenceNr, serialized))
+              case _ =>
+                f.map(serialized => new MessageForWrite(persistentRepr.sequenceNr, serialized))
+            }
+
         }
       }
 
