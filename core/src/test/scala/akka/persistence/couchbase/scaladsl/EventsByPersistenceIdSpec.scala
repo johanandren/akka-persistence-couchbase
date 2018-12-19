@@ -130,7 +130,7 @@ class EventsByPersistenceIdSpec extends AbstractQuerySpec("EventsByPersistenceId
           .currentEventsByPersistenceId(pid, 0L, Long.MaxValue)
           .runWith(Sink.seq)
           .futureValue
-        evts should have size (initialPersistedEvents)
+        evts should have size (initialPersistedEvents.toLong)
       }
 
       val src = queries.currentEventsByPersistenceId(pid, 0L, Long.MaxValue)
@@ -150,7 +150,7 @@ class EventsByPersistenceIdSpec extends AbstractQuerySpec("EventsByPersistenceId
       // make sure we could observe the new event
       readingOurOwnWrites {
         val evts = queries
-          .currentEventsByPersistenceId(pid, initialPersistedEvents + 1, Long.MaxValue)
+          .currentEventsByPersistenceId(pid, initialPersistedEvents + 1L, Long.MaxValue)
           .runWith(Sink.seq)
           .futureValue
         evts.map(_.event) should ===(List(s"$pid-$seqNrAfterInitial"))
@@ -163,7 +163,7 @@ class EventsByPersistenceIdSpec extends AbstractQuerySpec("EventsByPersistenceId
         .expectNoMessage(noMsgTimeout)
         .request(5)
         // last events that was in db when query was triggered
-        .expectNextN(((notTheEntireFirstPage + 1L) to initialPersistedEvents).map(n => s"$pid-$n"))
+        .expectNextN(((notTheEntireFirstPage + 1L) to initialPersistedEvents.toLong).map(n => s"$pid-$n"))
         .expectComplete() // but not the event that was written after query is not seen
 
     }
