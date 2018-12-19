@@ -20,15 +20,10 @@ object Dependencies {
     val akkaPersistence = "com.typesafe.akka" %% "akka-persistence" % AkkaVersion
     val akkaPersistenceQuery = "com.typesafe.akka" %% "akka-persistence-query" % AkkaVersion
 
-    val lagomJavaDslApi = "com.lightbend.lagom" %% "lagom-javadsl-api" % LagomVersion
     val lagomScalaDslApi = "com.lightbend.lagom" %% "lagom-scaladsl-api" % LagomVersion
     val lagomPersistenceCore = "com.lightbend.lagom" %% "lagom-persistence-core" % LagomVersion
     val lagomPersistenceScalaDsl = "com.lightbend.lagom" %% "lagom-scaladsl-persistence" % LagomVersion
     val lagomPersistenceJavaDsl = "com.lightbend.lagom" %% "lagom-javadsl-persistence" % LagomVersion
-    val lagomPlayJson = "com.lightbend.lagom" %% "lagom-scaladsl-play-json" % LagomVersion
-    val lagomJavaDslJackson = "com.lightbend.lagom" %% "lagom-javadsl-jackson" % LagomVersion
-
-    val slf4jApi = "org.slf4j" % "slf4j-api" % "1.7.25"
   }
 
   object TestDeps {
@@ -45,6 +40,8 @@ object Dependencies {
     val lagomTestKitScalaDsl = "com.lightbend.lagom" %% "lagom-scaladsl-testkit" % LagomVersion % Test
     val lagomTestKitJavaDsl = "com.lightbend.lagom" %% "lagom-javadsl-testkit" % LagomVersion % Test
     val lagomPersistenceTestKit = "com.lightbend.lagom" %% "lagom-persistence-testkit" % LagomVersion % Test
+
+    val slf4jApi = "org.slf4j" % "slf4j-api" % "1.7.25" % Test
   }
 
   import Compile._
@@ -75,7 +72,6 @@ object Dependencies {
   )
 
   val `copy-of-lagom-persistence-test` = Seq(
-    lagomPersistenceCore,
     lagomPersistenceScalaDsl,
     lagomPersistenceJavaDsl,
     akkaTestkit,
@@ -90,16 +86,13 @@ object Dependencies {
   )
 
   val `lagom-persistence-couchbase-scaladsl` = Seq(
-    lagomPersistenceCore,
     lagomPersistenceScalaDsl,
     lagomScalaDslApi,
     scalaTest
   )
 
   val `lagom-persistence-couchbase-javadsl` = Seq(
-    lagomPersistenceCore,
     lagomPersistenceJavaDsl,
-    lagomJavaDslApi,
     junit,
     junitInterface
   )

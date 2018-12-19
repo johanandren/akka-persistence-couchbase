@@ -62,6 +62,13 @@ def common: Seq[Setting[_]] = Seq(
   fork := true
 )
 
+lazy val dontPublish = Seq(
+  skip in publish := true,
+  whitesourceIgnore := true,
+  publishArtifact in Compile := false
+)
+
+
 def multiJvmTestSettings: Seq[Setting[_]] =
   SbtMultiJvm.multiJvmSettings ++ Seq(
     // `database.port` required for multi-dc tests that extend AbstractClusteredPersistentEntityConfig
@@ -70,11 +77,10 @@ def multiJvmTestSettings: Seq[Setting[_]] =
 
 lazy val root = (project in file("."))
   .settings(common)
+  .settings(dontPublish)
   .settings(
     name := "akka-persistence-couchbase-root",
-    publishArtifact := false,
-    publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo"))),
-    skip in publish := true
+    publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo")))
   )
   .aggregate((Seq(couchbaseClient, core, docs) ++ lagomModules).map(Project.projectToRef): _*)
 
@@ -120,10 +126,10 @@ lazy val lagomModules = Seq[Project](
 lazy val `copy-of-lagom-persistence-test` =
   (project in file("lagom-persistence-couchbase/copy-of-lagom-persistence-test"))
     .settings(common)
+    .settings(dontPublish)
     .settings(
       // This modules copy-pasted preserve it as is
       scalafmtOnCompile := false,
-      skip in publish := true,
       libraryDependencies := Dependencies.`copy-of-lagom-persistence-test`
     )
 
@@ -175,10 +181,9 @@ lazy val docs = project
   .in(file("docs"))
   .enablePlugins(AkkaParadoxPlugin)
   .settings(common)
+  .settings(dontPublish)
   .settings(
     name := "Akka Persistence Couchbase",
-    skip in publish := true,
-    whitesourceIgnore := true,
     paradoxGroups := Map("Language" -> Seq("Java", "Scala")),
     paradoxProperties ++= Map(
       "project.url" -> "https://doc.akka.io/docs/akka-persistence-couchbase/current/",
