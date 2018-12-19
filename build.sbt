@@ -68,7 +68,6 @@ lazy val dontPublish = Seq(
   publishArtifact in Compile := false
 )
 
-
 def multiJvmTestSettings: Seq[Setting[_]] =
   SbtMultiJvm.multiJvmSettings ++ Seq(
     // `database.port` required for multi-dc tests that extend AbstractClusteredPersistentEntityConfig
