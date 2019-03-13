@@ -26,7 +26,6 @@ import com.lightbend.lagom.javadsl.api.ServiceLocator
 import com.lightbend.lagom.javadsl.persistence.PersistentEntityRegistry
 import com.lightbend.lagom.spi.persistence.OffsetStore
 import com.typesafe.config.Config
-import javax.annotation.PostConstruct
 import javax.inject.Inject
 import play.api.inject.{Binding, Injector, Module}
 import play.api.{Configuration, Environment}
@@ -84,7 +83,6 @@ private[lagom] object CouchbasePersistenceModule {
   class InitServiceLocatorHolder @Inject()(system: ActorSystem, injector: Injector) {
 
     // Guice doesn't support this, but other DI frameworks do.
-    @PostConstruct
     def init(): Unit =
       Try(injector.instanceOf[ServiceLocator]).foreach { locator =>
         ServiceLocatorHolder(system).setServiceLocator(new ServiceLocatorAdapter {
