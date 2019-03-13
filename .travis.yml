@@ -59,7 +59,7 @@ jobs:
       - JDK="adopt@~1.11.0-2"
       - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
       - CMD="+test"
-      name: "Run tests (AdoptOpenJDK 8)"
+      name: "Run tests (AdoptOpenJDK 11)"
 
     - stage: publish
       script: sbt +publish
