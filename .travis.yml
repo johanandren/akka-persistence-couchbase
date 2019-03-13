@@ -1,6 +1,5 @@
 language: scala
-
-sudo: required
+sudo: false
 
 services:
   - docker
@@ -13,7 +12,7 @@ before_install:
 
 # default script for jobs, that do not have any specified
 script:
-  - jabba use ${JDK:=adopt@~1.8.202-08}  
+  - jabba use ${JDK:=adopt@~1.8.202-08}
   - java -version
   - ${PRE_CMD:=return 0} # do nothing if not set
   - sbt -jvm-opts .jvmopts-travis "$CMD"
@@ -35,31 +34,32 @@ jobs:
     - stage: test
       name: "Run tests (AdoptOpenJDK 8)"
     - env:
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        - CMD=core/test
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD=core/test
     - env:
-        - CMD=lagom-persistence-couchbase-core/test
+      - CMD=lagom-persistence-couchbase-core/test
     - env:
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        - CMD=lagom-persistence-couchbase-javadsl/test
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD=lagom-persistence-couchbase-javadsl/test
     - env:
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        - CMD=lagom-persistence-couchbase-scaladsl/test
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD=lagom-persistence-couchbase-scaladsl/test
     - env:
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        - CMD=lagom-persistence-couchbase-javadsl/multi-jvm:test
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD=lagom-persistence-couchbase-javadsl/multi-jvm:test
     - env:
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        - CMD=lagom-persistence-couchbase-scaladsl/multi-jvm:test
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD=lagom-persistence-couchbase-scaladsl/multi-jvm:test
     - env:
-        - CMD=docs/paradox
+      - CMD=docs/paradox
     - env:
-        - CMD=root/doc
+      - CMD=root/doc
+
     - env:
-        - JDK="adopt@~1.11.0-2"
-        - CMD="+test"
-        - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
-        name: "Run tests (AdoptOpenJDK 11)"
+      - JDK="adopt@~1.11.0-2"
+      - PRE_CMD="docker-compose -f docker/couchbase-1-node/docker-compose.yml up -d couchbase"
+      - CMD="+test"
+      name: "Run tests (AdoptOpenJDK 8)"
 
     - stage: publish
       script: sbt +publish
