@@ -6,7 +6,7 @@ import sbt._
 
 object Dependencies {
 
-  val AkkaVersion = "2.5.20"
+  val AkkaVersion = "2.5.21"
   val AlpakkaCouchbaseVersion = "1.0-M3"
   val LagomVersion = "1.5.0-M3"
   object Compile {
