@@ -29,7 +29,7 @@ object TestConfig {
     "couchbase-journal.write.bucket" -> "akka",
     "couchbase-journal.write.persist-to" -> "none",
     "couchbase-journal.write.replicate-to" -> "none",
-    "couchbase-journal.write.parallelism" -> new Integer(1),
+    "couchbase-journal.write.parallelism" -> Integer.valueOf(1),
     "couchbase-journal.write.write-timeout" -> "15s",
     "couchbase-journal.write.read-timeout" -> "15s",
     "couchbase-journal.snapshot.bucket" -> "akka",
