@@ -6,7 +6,7 @@ import sbt._
 
 object Dependencies {
 
-  val AkkaVersion = "2.5.21"
+  val AkkaVersion = "2.5.20"
   val AlpakkaCouchbaseVersion = "1.0-M3"
   val LagomVersion = "1.5.0-M3"
   object Compile {
@@ -14,6 +14,7 @@ object Dependencies {
     val rxJavaReactiveStreams = "io.reactivex" % "rxjava-reactive-streams" % "1.2.1" // Apache V2
 
     val akkaActor = "com.typesafe.akka" %% "akka-actor" % AkkaVersion
+    val akkaCluster = "com.typesafe.akka" %% "akka-cluster" % AkkaVersion
     val akkaStream = "com.typesafe.akka" %% "akka-stream" % AkkaVersion
     val akkaPersistence = "com.typesafe.akka" %% "akka-persistence" % AkkaVersion
     val akkaPersistenceQuery = "com.typesafe.akka" %% "akka-persistence-query" % AkkaVersion
@@ -61,6 +62,8 @@ object Dependencies {
   )
 
   val `copy-of-lagom-persistence-test` = Seq(
+    akkaActor,
+    akkaCluster,
     lagomPersistenceScalaDsl,
     lagomPersistenceJavaDsl,
     akkaTestkit,
