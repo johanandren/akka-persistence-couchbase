@@ -82,7 +82,6 @@ private[lagom] object CouchbasePersistenceModule {
 
   class InitServiceLocatorHolder @Inject()(system: ActorSystem, injector: Injector) {
 
-    // Guice doesn't support this, but other DI frameworks do.
     def init(): Unit =
       Try(injector.instanceOf[ServiceLocator]).foreach { locator =>
         ServiceLocatorHolder(system).setServiceLocator(new ServiceLocatorAdapter {
